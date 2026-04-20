@@ -153,17 +153,77 @@
 
 ## Traceability
 
-Заполняется автоматически при создании ROADMAP.md.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (TBD by roadmapper) | — | Pending |
+| CFG-01 | Phase 1 | Pending |
+| CFG-02 | Phase 1 | Pending |
+| CFG-03 | Phase 1 | Pending |
+| CFG-04 | Phase 1 | Pending |
+| CFG-05 | Phase 1 | Pending |
+| INF-01 | Phase 1 | Pending |
+| INF-02 | Phase 1 | Pending |
+| INF-03 | Phase 1 | Pending |
+| INF-04 | Phase 1 | Pending |
+| INF-05 | Phase 1 | Pending |
+| SESS-01 | Phase 1 | Pending |
+| SESS-02 | Phase 1 | Pending |
+| ING-01 | Phase 1 | Pending |
+| ING-02 | Phase 1 | Pending |
+| ING-03 | Phase 1 | Pending |
+| ING-04 | Phase 1 | Pending |
+| ING-05 | Phase 1 | Pending |
+| ING-06 | Phase 1 | Pending |
+| DB-01 | Phase 1 | Pending |
+| DB-02 | Phase 1 | Pending |
+| DB-03 | Phase 1 | Pending |
+| DB-04 | Phase 1 | Pending |
+| LLM-01 | Phase 2 | Pending |
+| LLM-02 | Phase 2 | Pending |
+| LLM-03 | Phase 2 | Pending |
+| LLM-04 | Phase 2 | Pending |
+| LLM-05 | Phase 2 | Pending |
+| LLM-06 | Phase 2 | Pending |
+| PIPE-01 | Phase 2 | Pending |
+| PIPE-02 | Phase 2 | Pending |
+| PIPE-03 | Phase 2 | Pending |
+| PIPE-04 | Phase 2 | Pending |
+| PIPE-05 | Phase 2 | Pending |
+| PIPE-06 | Phase 2 | Pending |
+| PIPE-07 | Phase 2 | Pending |
+| PIPE-08 | Phase 2 | Pending |
+| PIPE-09 | Phase 2 | Pending |
+| PIPE-10 | Phase 2 | Pending |
+| PIPE-11 | Phase 2 | Pending |
+| QUE-01 | Phase 2 | Pending |
+| QUE-02 | Phase 2 | Pending |
+| QUE-03 | Phase 2 | Pending |
+| DIG-01 | Phase 2 | Pending |
+| DIG-02 | Phase 2 | Pending |
+| DIG-03 | Phase 2 | Pending |
+| DIG-04 | Phase 2 | Pending |
+| DIG-05 | Phase 2 | Pending |
+| DIG-06 | Phase 2 | Pending |
+| DIG-07 | Phase 2 | Pending |
+| DEL-01 | Phase 2 | Pending |
+| DEL-02 | Phase 2 | Pending |
+| DEL-03 | Phase 2 | Pending |
+| DEL-04 | Phase 2 | Pending |
+| CRON-01 | Phase 2 | Pending |
+| CRON-02 | Phase 2 | Pending |
+| CRON-03 | Phase 2 | Pending |
+| OPS-01 | Phase 2 | Pending |
+| OPS-02 | Phase 2 | Pending |
+| OPS-03 | Phase 2 | Pending |
+| OPS-04 | Phase 2 | Pending |
+| QA-01 | Phase 2 | Pending |
+| QA-02 | Phase 2 | Pending |
+| QA-03 | Phase 2 | Pending |
 
 **Coverage:**
-- v1 requirements: 55 total (пересчитать после маппинга)
-- Mapped to phases: TBD
-- Unmapped: TBD
+- v1 requirements: 63 total
+- Mapped to phases: 63
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-20*
-*Last updated: 2026-04-20 after initialization*
+*Last updated: 2026-04-20 after roadmap creation*
