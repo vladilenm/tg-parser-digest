@@ -14,25 +14,27 @@
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+Validated in Phase 1 (MVP дайджест, 2026-04-21):
+
+- [x] Конфиг каналов и окружения: `channels.yaml` + `.env.example` читаются скриптом, 10–15 публичных каналов по `username`
+- [x] Разовая генерация `TG_SESSION` через `npm run login` (StringSession, интерактивный ввод телефона/кода/2FA)
+- [x] GramJS-клиент переиспользует сохранённую сессию и выглядит как обычный клиент (deviceModel/appVersion/langCode="ru")
+- [x] `fetchLast24h(username)` собирает посты за `FETCH_WINDOW_HOURS` часов, останавливает итерацию по `msg.date < sinceUnix`, уважает `MAX_MESSAGES_PER_CHANNEL`
+- [x] Последовательный обход каналов с jitter: `sleep(CHANNEL_DELAY_MS + randomInt(0, 500))` между каналами
+- [x] Обработка `FloodWaitError`: один retry после `err.seconds*1000 + 2000`; второй подряд — прерывание прогона
+- [x] Частные ошибки канала (`ChannelPrivateError`, `UsernameNotOccupiedError`, `UsernameInvalidError`) логируются и пропускают канал, прогон продолжается
+- [x] Суммаризация одним батчем через DeepSeek (`deepseek-chat`, `response_format: json_object`), валидация ответа вручную (`typeof`/`Array.isArray`)
+- [x] Проверка ядра экстрактивности: `keyQuote` каждой записи дайджеста — дословная подстрока исходного `text`
+- [x] Server-side рендер JSON → HTML (заголовки тем, буллеты с `<i>`-цитатой и `<a>`-ссылкой), экранирование `<`, `>`, `&`
+- [x] Доставка в приватный канал через `fetch` к Bot API `sendMessage`, `parse_mode: "HTML"`, нарезка на части по ~4000 символов с нумерацией `(i/N)`
+- [x] Пустой день: если постов 0 — логируем `No posts in window`, выходим с кодом 0, DeepSeek и Telegram не дёргаем
+- [x] README: запуск в 3 команды + дисциплина «не чаще одного прогона в 10–15 минут»
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Конфиг каналов и окружения: `channels.yaml` + `.env.example` читаются скриптом, 10–15 публичных каналов по `username`
-- [ ] Разовая генерация `TG_SESSION` через `npm run login` (StringSession, интерактивный ввод телефона/кода/2FA)
-- [ ] GramJS-клиент переиспользует сохранённую сессию и выглядит как обычный клиент (deviceModel/appVersion/langCode="ru")
-- [ ] `fetchLast24h(username)` собирает посты за `FETCH_WINDOW_HOURS` часов, останавливает итерацию по `msg.date < sinceUnix`, уважает `MAX_MESSAGES_PER_CHANNEL`
-- [ ] Последовательный обход каналов с jitter: `sleep(CHANNEL_DELAY_MS + randomInt(0, 500))` между каналами
-- [ ] Обработка `FloodWaitError`: один retry после `err.seconds*1000 + 2000`; второй подряд — прерывание прогона
-- [ ] Частные ошибки канала (`ChannelPrivateError`, `UsernameNotOccupiedError`, `UsernameInvalidError`) логируются и пропускают канал, прогон продолжается
-- [ ] Суммаризация одним батчем через DeepSeek (`deepseek-chat`, `response_format: json_object`), валидация ответа вручную (`typeof`/`Array.isArray`)
-- [ ] Проверка ядра экстрактивности: `keyQuote` каждой записи дайджеста — дословная подстрока исходного `text`
-- [ ] Server-side рендер JSON → HTML (заголовки тем, буллеты с `<i>`-цитатой и `<a>`-ссылкой), экранирование `<`, `>`, `&`
-- [ ] Доставка в приватный канал через `fetch` к Bot API `sendMessage`, `parse_mode: "HTML"`, нарезка на части по ~4000 символов с нумерацией `(i/N)`
-- [ ] Пустой день: если постов 0 — логируем `No posts in window`, выходим с кодом 0, DeepSeek и Telegram не дёргаем
-- [ ] README: запуск в 3 команды + дисциплина «не чаще одного прогона в 10–15 минут»
+(Milestone MVP v1.0 завершён — нет активных требований. Следующий milestone ещё не определён.)
 
 ### Out of Scope
 
@@ -101,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 after initialization*
+*Last updated: 2026-04-21 after Phase 1 (MVP дайджест) complete*
