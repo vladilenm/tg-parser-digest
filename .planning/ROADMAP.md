@@ -44,9 +44,9 @@
 
 **Plans**: 3 plans (созданы 2026-04-21)
 
-- [ ] 01-01-PLAN.md — Каркас + сессия (package.json, tsconfig.json, .env.example, channels.yaml, .gitignore, scripts/login.ts)
-- [ ] 01-02-PLAN.md — Пайплайн сбора и суммаризации (src/types.ts, src/telegram.ts, src/summarize.ts)
-- [ ] 01-03-PLAN.md — Доставка, склейка, README + ручная приёмка (src/deliver.ts, src/run.ts, README.md)
+- [x] 01-01-PLAN.md — Каркас + сессия (package.json, tsconfig.json, .env.example, channels.yaml, .gitignore, scripts/login.ts)
+- [x] 01-02-PLAN.md — Пайплайн сбора и суммаризации (src/types.ts, src/telegram.ts, src/summarize.ts)
+- [x] 01-03-PLAN.md — Доставка, склейка, README + ручная приёмка (src/deliver.ts, src/run.ts, README.md)
 
 ## Suggested Plan Decomposition
 

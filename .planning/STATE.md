@@ -2,13 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Roadmap created, awaiting plan decomposition
-last_updated: "2026-04-21T06:48:46.635Z"
+status: completed
+last_updated: "2026-04-21T07:54:32.445Z"
 progress:
   total_phases: 1
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
 ---
 
 # State: tg-parser-demo
@@ -26,9 +27,9 @@ progress:
 ## Current Position
 
 - **Milestone:** MVP
-- **Phase:** 1 (MVP дайджест)
-- **Plan:** — (not yet decomposed; next step — `/gsd-plan-phase 1`)
-- **Status:** Roadmap created, awaiting plan decomposition
+- **Phase:** 01
+- **Plan:** Not started
+- **Status:** Milestone complete
 - **Progress:**
   - Phases: `[░] 0/1 complete`
   - Plans: `[░] 0/— complete` (планы ещё не созданы)
