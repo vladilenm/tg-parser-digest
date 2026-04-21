@@ -97,42 +97,51 @@
 
 ## Traceability
 
-Заполняется gsd-roadmapper при создании ROADMAP.md.
+Заполнено gsd-roadmapper 2026-04-21 при создании ROADMAP.md. Все 26 v1-требований смаппены на **Phase 1: MVP дайджест** (пользователь явно запросил «сильно меньше чем coarse»; MVP — один скрипт, все требования связаны одним пайплайном `GramJS → DeepSeek → Bot API`, разбиение на фазы не даёт верифицируемой ценности).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CFG-01 | — | Pending |
-| CFG-02 | — | Pending |
-| CFG-03 | — | Pending |
-| CFG-04 | — | Pending |
-| CFG-05 | — | Pending |
-| AUTH-01 | — | Pending |
-| AUTH-02 | — | Pending |
-| FETCH-01 | — | Pending |
-| FETCH-02 | — | Pending |
-| FETCH-03 | — | Pending |
-| FETCH-04 | — | Pending |
-| FETCH-05 | — | Pending |
-| FETCH-06 | — | Pending |
-| SUM-01 | — | Pending |
-| SUM-02 | — | Pending |
-| SUM-03 | — | Pending |
-| SUM-04 | — | Pending |
-| DELIVER-01 | — | Pending |
-| DELIVER-02 | — | Pending |
-| DELIVER-03 | — | Pending |
-| DELIVER-04 | — | Pending |
-| RUN-01 | — | Pending |
-| RUN-02 | — | Pending |
-| RUN-03 | — | Pending |
-| OPS-01 | — | Pending |
-| OPS-02 | — | Pending |
+| CFG-01 | Phase 1 | Pending |
+| CFG-02 | Phase 1 | Pending |
+| CFG-03 | Phase 1 | Pending |
+| CFG-04 | Phase 1 | Pending |
+| CFG-05 | Phase 1 | Pending |
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 1 | Pending |
+| FETCH-01 | Phase 1 | Pending |
+| FETCH-02 | Phase 1 | Pending |
+| FETCH-03 | Phase 1 | Pending |
+| FETCH-04 | Phase 1 | Pending |
+| FETCH-05 | Phase 1 | Pending |
+| FETCH-06 | Phase 1 | Pending |
+| SUM-01 | Phase 1 | Pending |
+| SUM-02 | Phase 1 | Pending |
+| SUM-03 | Phase 1 | Pending |
+| SUM-04 | Phase 1 | Pending |
+| DELIVER-01 | Phase 1 | Pending |
+| DELIVER-02 | Phase 1 | Pending |
+| DELIVER-03 | Phase 1 | Pending |
+| DELIVER-04 | Phase 1 | Pending |
+| RUN-01 | Phase 1 | Pending |
+| RUN-02 | Phase 1 | Pending |
+| RUN-03 | Phase 1 | Pending |
+| OPS-01 | Phase 1 | Pending |
+| OPS-02 | Phase 1 | Pending |
 
 **Coverage:**
 - v1 requirements: 26 total
-- Mapped to phases: 0 (заполнит roadmapper)
-- Unmapped: 26 ⚠️ (будет 0 после roadmap)
+- Mapped to phases: 26 (100%) ✓
+- Unmapped: 0 ✓
+
+**Per-category coverage:**
+- CFG: 5/5 → Phase 1
+- AUTH: 2/2 → Phase 1
+- FETCH: 6/6 → Phase 1
+- SUM: 4/4 → Phase 1
+- DELIVER: 4/4 → Phase 1
+- RUN: 3/3 → Phase 1
+- OPS: 2/2 → Phase 1
 
 ---
 *Requirements defined: 2026-04-21*
-*Last updated: 2026-04-21 after initial definition*
+*Traceability updated: 2026-04-21 by gsd-roadmapper (all 26 → Phase 1)*

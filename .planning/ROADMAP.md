@@ -1,64 +1,89 @@
-# Roadmap: Oil & Gas Intelligence Monitor
+# Roadmap: tg-parser-demo
 
-## Overview
+**Created:** 2026-04-21
+**Granularity:** coarse (compressed — пользователь явно запросил «сильно меньше»)
+**Total phases:** 1
+**Coverage:** 26/26 v1 requirements mapped
 
-Two phases that follow SPEC §9 steps 1→12 sequentially. Phase 1 builds the data collection foundation — project scaffold, config, infrastructure, database schema, and the GramJS ingest listener — delivering raw messages into Postgres within 60 seconds. Phase 2 completes the full MVP: LLM gateway abstractions, the sequential processing pipeline (normalize → embed → classify → dedupe → summarize → persist), BullMQ workers, digest composition, Telegram delivery, cron scheduling, reliability hardening, and QA scripts. When Phase 2 completes, the service satisfies all six acceptance criteria from SPEC §12 and is ready for the pilot handoff.
+## Core Value
+
+За один `npm start` получить в закрытом Telegram-канале дайджест событий нефтегаза за последние 24 часа, в котором каждая цитата дословно присутствует в исходном посте — без галлюцинаций LLM.
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
-
-Decimal phases appear between their surrounding integers in numeric order.
-
-- [ ] **Phase 1: Foundation & Ingest** - Project scaffold, config validation, infrastructure, DB schema, GramJS session and ingest listener — messages land in DB within 60 seconds
-- [ ] **Phase 2: Pipeline, Digest & Delivery** - LLM gateway, sequential processing pipeline, BullMQ workers, digest composition and delivery, cron scheduling, reliability, QA — full MVP acceptance criteria met
+- [ ] **Phase 1: MVP дайджест** — один скрипт, который от `npm install` до HTML-дайджеста в закрытом канале проходит полный путь GramJS → DeepSeek → Bot API и удовлетворяет 5 критериям приёмки из §11 spec-app.md
 
 ## Phase Details
 
-### Phase 1: Foundation & Ingest
-**Goal**: Raw Telegram messages land in the database within 60 seconds of publication and are queued for processing
-**Depends on**: Nothing (first phase)
-**Requirements**: CFG-01, CFG-02, CFG-03, CFG-04, CFG-05, INF-01, INF-02, INF-03, INF-04, INF-05, SESS-01, SESS-02, ING-01, ING-02, ING-03, ING-04, ING-05, ING-06, DB-01, DB-02, DB-03, DB-04
-**Success Criteria** (what must be TRUE):
-  1. `pnpm dev` starts without errors when all env vars from `.env.example` are present; missing required vars cause a clear exit with code != 0
-  2. `pnpm setup:db` creates the `vector` extension, applies Drizzle migrations, and the `messages`, `items`, `digests` tables exist with correct schema and HNSW index
-  3. A message posted to a subscribed Telegram channel appears as a row in `messages` within 60 seconds, with `tg_channel_id`, `tg_message_id`, and `raw_text` populated
-  4. Re-ingesting the same `(tg_channel_id, tg_message_id)` does not create a duplicate row (upsert is idempotent)
-  5. `pnpm gen:session` interactively produces a GramJS StringSession string; an invalid session causes `pnpm dev` to exit with a clear error message
-**Plans**: 3 plans
+### Phase 1: MVP дайджест
 
-Plans:
-- [ ] 01-01: Project init, package.json, TypeScript config, docker-compose (Postgres + Redis), env validation (zod), config loader (channels.yaml, keywords.yaml), logger (pino)
-- [ ] 01-02: Drizzle schema (messages, items, digests tables), pgvector extension migration, HNSW index, `pnpm setup:db` script
-- [ ] 01-03: GramJS StringSession generator (`pnpm gen:session`), ingest listener (NewMessage event, upsert to messages, push to BullMQ `process` queue, FloodWait backoff, debounce)
-**UI hint**: no
+**Goal**: Оператор может за одну команду `npm start` получить в свой приватный Telegram-канал HTML-дайджест за последние 24 часа по 10–15 каналам российского нефтегаза, где каждая цитата дословно присутствует в исходном посте, а пустой день корректно обрабатывается без похода в LLM.
 
-### Phase 2: Pipeline, Digest & Delivery
-**Goal**: Every ingested message is classified, deduplicated, and summarized; a digest grouping the day's relevant news by segment arrives in the private Telegram channel at 20:00 MSK every day
-**Depends on**: Phase 1
-**Requirements**: LLM-01, LLM-02, LLM-03, LLM-04, LLM-05, LLM-06, PIPE-01, PIPE-02, PIPE-03, PIPE-04, PIPE-05, PIPE-06, PIPE-07, PIPE-08, PIPE-09, PIPE-10, PIPE-11, QUE-01, QUE-02, QUE-03, DIG-01, DIG-02, DIG-03, DIG-04, DIG-05, DIG-06, DIG-07, DEL-01, DEL-02, DEL-03, DEL-04, CRON-01, CRON-02, CRON-03, OPS-01, OPS-02, OPS-03, OPS-04, QA-01, QA-02, QA-03
-**Success Criteria** (what must be TRUE):
-  1. A test message posted to a subscribed channel produces an `items` row within the BullMQ retry window, with `directions`, `companies`, `importance`, `summary`, and `keyQuote` all populated; `rawText.includes(keyQuote)` is true for 100% of the 20 randomly sampled items
-  2. One news story posted to 3 different subscribed channels results in exactly one item cluster in the digest (dedupe via pgvector cosine similarity > 0.90 in 24h window)
-  3. Direction classification reaches ≥85% accuracy and company tagging ≥90% accuracy on the 50-item golden dataset (`pnpm tsx scripts/evaluate-classify.ts` reports passing scores)
-  4. The digest arrives in the private Telegram channel at 20:00 ± 1 minute MSK; messages longer than 4096 characters are split with `(1/N)` numbering; a second cron run on the same calendar day skips sending (idempotency)
-  5. The service runs for 48 hours without manual intervention on the VPS: ingest continues, two consecutive digests are sent on schedule, graceful shutdown on SIGTERM drains in-flight jobs within 10 seconds
-**Plans**: 3 plans
+**Depends on**: Nothing (первая и единственная фаза MVP)
 
-Plans:
-- [ ] 02-01: LLMProvider and EmbeddingProvider interfaces, ClaudeProvider (with prompt caching), OpenAIEmbeddingProvider (with Redis cache, TTL 7d), structured logging for LLM calls (full in dev, metadata-only in prod)
-- [ ] 02-02: Sequential pipeline (normalize → embed → classify → dedupe → summarize → persist) with zod validation + retry, early-exit on isRelevant=false, keyQuote verbatim check; BullMQ `process` worker (retry 3x, exponential backoff, DLQ logging)
-- [ ] 02-03: Digest composition (24h window, cluster dedup, importance filter, direction grouping, 7-item limit), Handlebars template rendering, TelegramBotDeliverer (grammy, HTML parse mode, 4096-char split), Croner scheduling (Europe/Moscow, idempotency), graceful shutdown (SIGINT/SIGTERM), `send-test-digest.ts` script, golden dataset + evaluate-classify script, vitest suite (dedupe boundary, classify JSON, digest formatting)
-**UI hint**: no
+**Requirements** (26):
+- CFG-01, CFG-02, CFG-03, CFG-04, CFG-05
+- AUTH-01, AUTH-02
+- FETCH-01, FETCH-02, FETCH-03, FETCH-04, FETCH-05, FETCH-06
+- SUM-01, SUM-02, SUM-03, SUM-04
+- DELIVER-01, DELIVER-02, DELIVER-03, DELIVER-04
+- RUN-01, RUN-02, RUN-03
+- OPS-01, OPS-02
+
+**Success Criteria** (what must be TRUE — основаны на §11 spec-app.md):
+
+1. **Сбор быстрый и без банов**: `npm start` на 15 каналах завершается за < 60 секунд и не выбрасывает `FloodWaitError` благодаря ограниченному окну, последовательности с jitter и правдоподобному клиенту *(поддерживают CFG-04, FETCH-01, FETCH-02, FETCH-04, FETCH-05, FETCH-06)*.
+
+2. **Дословность цитат**: для выборки из 20 постов каждый `keyQuote` в пришедшем HTML-дайджесте дословно найден в исходном `text` поста — проверяется вручную *(поддерживают SUM-01, SUM-02, SUM-03)*.
+
+3. **Корректная HTML-доставка**: в приватный канал приходит одно сообщение или корректно пронумерованные части `(i/N)`, `parse_mode: "HTML"` рендерится без ошибок, пользовательский текст экранирован *(поддерживают SUM-04, DELIVER-01, DELIVER-02, DELIVER-03, DELIVER-04)*.
+
+4. **Пустой день обрабатывается**: если за 24 часа ни одного поста — скрипт логирует `No posts in window` и выходит с кодом 0, DeepSeek и Telegram не дёргаются *(поддерживают RUN-01, RUN-02)*.
+
+5. **Запуск воспроизводится в 3 команды**: по README новый оператор проходит путь `npm install` → `npm run login` (разовая генерация `TG_SESSION`) → `npm start` и получает дайджест; дисциплина «не чаще одного прогона в 10–15 минут» зафиксирована в README *(поддерживают CFG-01, CFG-02, CFG-03, CFG-05, AUTH-01, AUTH-02, RUN-03, OPS-01, OPS-02)*.
+
+**Plans**: TBD (см. план декомпозиции ниже)
+
+## Suggested Plan Decomposition
+
+Пользователь запросил 2–3 плана суммарно. Рекомендуемое разбиение внутри Phase 1 (детализируется через `/gsd-plan-phase 1`):
+
+| Plan | Scope | Requirements | Maps to spec-app.md |
+|------|-------|--------------|---------------------|
+| 1. Каркас + сессия | `package.json`, `tsconfig.json`, `.env.example`, `channels.yaml`, `.gitignore`, `scripts/login.ts` | CFG-01…05, AUTH-01, AUTH-02 | §7.1, §7.2 |
+| 2. Пайплайн сбора и суммаризации | `src/telegram.ts` (GramJS client + fetchLast24h + anti-ban), `src/summarize.ts` (DeepSeek + промпт + renderHtml) | FETCH-01…06, SUM-01…04 | §7.3, §7.4, §8, §9 |
+| 3. Доставка, склейка, README | `src/deliver.ts` (chunk + sendMessage), `src/run.ts` (main + пустой день), `README.md` (3 команды + дисциплина), ручная приёмка | DELIVER-01…04, RUN-01…03, OPS-01, OPS-02 | §7.5, §7.6, §10, §11 |
+
+Разбиение допускает параллельное выполнение Plan 1 и Plan 2 (`parallelization: true` в config.json), но Plan 3 зависит от обоих.
 
 ## Progress
 
-**Execution Order:**
-Phases execute in numeric order: 1 → 2
-
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Ingest | 0/3 | Not started | - |
-| 2. Pipeline, Digest & Delivery | 0/3 | Not started | - |
+| 1. MVP дайджест | 0/— | Not started | — |
+
+## Coverage Validation
+
+**v1 requirements:** 26
+**Mapped:** 26 (all to Phase 1)
+**Orphaned:** 0
+**Duplicates:** 0
+
+Coverage by category:
+- CFG: 5/5 → Phase 1
+- AUTH: 2/2 → Phase 1
+- FETCH: 6/6 → Phase 1
+- SUM: 4/4 → Phase 1
+- DELIVER: 4/4 → Phase 1
+- RUN: 3/3 → Phase 1
+- OPS: 2/2 → Phase 1
+
+## Notes
+
+- **Почему одна фаза?** Пользователь явно запросил «сильно меньше чем coarse». MVP — один скрипт на ~400 строк кода, три модуля, без БД/Docker/крона. Разбиение на 2+ фазы создало бы искусственные границы: все 26 требований связаны одной цепочкой `GramJS → DeepSeek → Bot API`, ни одно подмножество не даёт верифицируемую ценность без остальных. Проверяемая ценность появляется только когда весь пайплайн работает end-to-end.
+- **Что делает границу фазы осмысленной?** Success Criteria = 5 критериев приёмки из §11 spec-app.md. Фаза закрыта, когда все 5 выполняются вручную оператором.
+- **Гранулярность — через планы, не фазы.** Разбиение на 3 плана внутри Phase 1 даёт удобные чекпойнты для прогресса (каркас → пайплайн → доставка+приёмка), не раздувая структуру.
+- **v2 явно отложен**: Postgres/pgvector/дедуп/крон/классификатор — следующий milestone (SPEC.md, см. §13 spec-app.md).
+
+---
+*Roadmap created: 2026-04-21 by gsd-roadmapper*
