@@ -1,0 +1,30 @@
+# Список публичных Telegram-каналов российского нефтегаза/нефтехимии.
+# User-аккаунт из TG_SESSION ОБЯЗАН быть подписан на каждый из них —
+# иначе GramJS бросит ChannelPrivateError (этот канал будет пропущен).
+# Поле priority зарезервировано (не используется в MVP).
+
+channels:
+  - username: "neftegazru"
+    priority: 1
+  - username: "oilfornication"
+    priority: 2
+  - username: "oil_gas_forum"
+    priority: 3
+  - username: "neftianka"
+    priority: 3
+  - username: "energytodaygroup"
+    priority: 3
+  - username: "oilcapital"
+    priority: 3
+  - username: "interfaxonline"
+    priority: 4
+  - username: "tass_agency"
+    priority: 4
+  - username: "rbc_news"
+    priority: 4
+  - username: "kommersant"
+    priority: 4
+  - username: "vedomosti"
+    priority: 4
+  - username: "prime1"
+    priority: 4
