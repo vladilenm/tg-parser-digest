@@ -42,7 +42,11 @@
 
 5. **Запуск воспроизводится в 3 команды**: по README новый оператор проходит путь `npm install` → `npm run login` (разовая генерация `TG_SESSION`) → `npm start` и получает дайджест; дисциплина «не чаще одного прогона в 10–15 минут» зафиксирована в README *(поддерживают CFG-01, CFG-02, CFG-03, CFG-05, AUTH-01, AUTH-02, RUN-03, OPS-01, OPS-02)*.
 
-**Plans**: TBD (см. план декомпозиции ниже)
+**Plans**: 3 plans (созданы 2026-04-21)
+
+- [ ] 01-01-PLAN.md — Каркас + сессия (package.json, tsconfig.json, .env.example, channels.yaml, .gitignore, scripts/login.ts)
+- [ ] 01-02-PLAN.md — Пайплайн сбора и суммаризации (src/types.ts, src/telegram.ts, src/summarize.ts)
+- [ ] 01-03-PLAN.md — Доставка, склейка, README + ручная приёмка (src/deliver.ts, src/run.ts, README.md)
 
 ## Suggested Plan Decomposition
 
@@ -60,7 +64,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. MVP дайджест | 0/— | Not started | — |
+| 1. MVP дайджест | 0/3 | Plans created, awaiting execution | — |
 
 ## Coverage Validation
 
