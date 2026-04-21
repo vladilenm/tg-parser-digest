@@ -1,3 +1,16 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: Roadmap created, awaiting plan decomposition
+last_updated: "2026-04-21T06:48:46.635Z"
+progress:
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+---
+
 # State: tg-parser-demo
 
 **Last updated:** 2026-04-21 after roadmap creation
@@ -66,7 +79,7 @@
 
 ## Session Continuity
 
-**Last session:** 2026-04-21 — roadmap created (1 phase, 26/26 requirements mapped, плановая декомпозиция на 3 плана зафиксирована)
+**Last session:** 2026-04-21T06:48:46.632Z
 
 **Next action:** `/gsd-plan-phase 1` — декомпозировать MVP дайджест на 3 плана согласно `Suggested Plan Decomposition` в ROADMAP.md.
 
