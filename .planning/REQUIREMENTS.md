@@ -96,36 +96,37 @@
 
 ## Traceability
 
-Соответствие требований фазам. Заполняется roadmapper при создании ROADMAP.md.
+Соответствие требований фазам.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DAEMON-01 | — | Pending |
-| DAEMON-02 | — | Pending |
-| DAEMON-03 | — | Pending |
-| DAEMON-04 | — | Pending |
-| PIPE-01 | — | Pending |
-| PIPE-02 | — | Pending |
-| PIPE-03 | — | Pending |
-| RELI-01 | — | Pending |
-| RELI-02 | — | Pending |
-| RELI-03 | — | Pending |
-| LOG-01 | — | Pending |
-| LOG-02 | — | Pending |
-| LOG-03 | — | Pending |
-| SCALE-01 | — | Pending |
-| SCALE-02 | — | Pending |
-| DEPLOY-01 | — | Pending |
-| DEPLOY-02 | — | Pending |
-| DOC-01 | — | Pending |
-| DOC-02 | — | Pending |
-| DOC-03 | — | Pending |
+| DAEMON-01 | Phase 2 | Pending |
+| DAEMON-02 | Phase 2 | Pending |
+| DAEMON-03 | Phase 2 | Pending |
+| DAEMON-04 | Phase 2 | Pending |
+| PIPE-01 | Phase 2 | Pending |
+| PIPE-02 | Phase 2 | Pending |
+| PIPE-03 | Phase 2 | Pending |
+| RELI-01 | Phase 2 | Pending |
+| RELI-02 | Phase 2 | Pending |
+| RELI-03 | Phase 2 | Pending |
+| LOG-01 | Phase 2 | Pending |
+| LOG-02 | Phase 2 | Pending |
+| LOG-03 | Phase 2 | Pending |
+| SCALE-01 | Phase 2 | Pending |
+| SCALE-02 | Phase 2 | Pending |
+| DEPLOY-01 | Phase 2 | Pending |
+| DEPLOY-02 | Phase 2 | Pending |
+| DOC-01 | Phase 2 | Pending |
+| DOC-02 | Phase 2 | Pending |
+| DOC-03 | Phase 2 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 20 total
-- Mapped to phases: 0 (заполнит roadmapper)
-- Unmapped: 20 ⚠️ (до роадмапа ожидаемо)
+- Mapped to phases: 20
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-22*
 *Source: docs/phase-2.md (утверждено оператором 2026-04-22)*
+*Traceability updated: 2026-04-22 — all 20 requirements mapped to Phase 2*

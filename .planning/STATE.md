@@ -5,7 +5,7 @@ milestone_name: Автоматизация + 50 каналов
 status: active
 last_updated: "2026-04-22T00:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -14,7 +14,7 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-04-22 — milestone v2.0 started
+**Last updated:** 2026-04-22 — Roadmap created
 
 ## Project Reference
 
@@ -28,10 +28,10 @@ See: `.planning/PROJECT.md` (обновлён 2026-04-22 с разделом Cur
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 2 — defining plan
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-22 — Milestone v2.0 started
+Status: Plan pending
+Last activity: 2026-04-22 — Roadmap created
 
 ## Accumulated Context
 
@@ -55,6 +55,7 @@ Last activity: 2026-04-22 — Milestone v2.0 started
 - Список 38 новых каналов по нефтегазу РФ (нефтехимия/бункеровка/масла/битум/керосин) подбирает оператор, ревью перед мёржем.
 - Клиент GramJS создаётся per-run и дисконнектится в `finally` — живую сессию между прогонами не держим.
 - Новая runtime-dep `node-cron` (итого 4 вместо 3) — компромисс принят ради daemon-режима.
+- YOLO-режим: вся фаза v2.0 — одна атомарная Phase 2 (20 требований), без разбивки на подфазы.
 
 ### Tech Debt (deferred, v1.0 backlog)
 
@@ -79,11 +80,11 @@ Last activity: 2026-04-22 — Milestone v2.0 started
 
 ## Session Continuity
 
-**Last session:** 2026-04-22 (milestone v2.0 started from `docs/phase-2.md`)
+**Last session:** 2026-04-22 (roadmap created for v2.0, Phase 2 defined)
 
-**Next action:** `/gsd-discuss-phase 2` (или `/gsd-plan-phase 2` чтобы пропустить обсуждение) после того как roadmap утверждён.
+**Next action:** `/gsd-plan-phase 2` — спланировать и выполнить Phase 2
 
 **Open questions:** Нет — все решения зафиксированы в `docs/phase-2.md` разделе «Решения».
 
 ---
-*State updated: 2026-04-22 — milestone v2.0 «Автоматизация + 50 каналов» started*
+*State updated: 2026-04-22 — Roadmap created, Phase 2 pending plan*

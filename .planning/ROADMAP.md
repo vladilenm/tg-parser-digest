@@ -1,15 +1,15 @@
 # Roadmap: tg-parser-demo
 
-**Last updated:** 2026-04-21 after v1.0 milestone shipped
+**Last updated:** 2026-04-22 — v2.0 roadmap created
 
 ## Core Value
 
-За один `npm start` получить в закрытом Telegram-канале дайджест событий нефтегаза за последние 24 часа, в котором каждая цитата дословно присутствует в исходном посте — без галлюцинаций LLM.
+За один прогон получить в закрытом Telegram-канале дайджест событий нефтегаза за последние 24 часа, в котором каждая цитата дословно присутствует в исходном посте — без галлюцинаций LLM.
 
 ## Milestones
 
 - ✅ **v1.0 MVP дайджест** — Phase 1 (shipped 2026-04-21) — [archive](milestones/v1.0-ROADMAP.md)
-- 📋 **v2.0** — не определён (кандидаты: Postgres/pgvector/дедуп, крон, классификатор направлений, абстракции `LLMProvider`)
+- 📋 **v2.0 Автоматизация + 50 каналов** — Phase 2 (in progress)
 
 ## Phases
 
@@ -27,15 +27,31 @@ Full archive: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 
 </details>
 
-### 📋 v2.0 (not yet planned)
+### v2.0 Автоматизация + 50 каналов
 
-Запустить через `/gsd-new-milestone` когда MVP-дайджест будет стабильно использоваться несколько дней и появится понимание реальной частоты повторов / ценности классификатора.
+- [ ] **Phase 2: Daemon + 50 каналов** — весь milestone одной атомарной фазой (YOLO)
+
+## Phase Details
+
+### Phase 2: Daemon + 50 каналов
+**Goal**: Парсер работает как daemon на VPS: ежедневный дайджест в 20:00 MSK без участия оператора, 50 каналов, диагностируемые прогоны через summary-лог
+**Depends on**: Phase 1 (shipped)
+**Requirements**: DAEMON-01, DAEMON-02, DAEMON-03, DAEMON-04, PIPE-01, PIPE-02, PIPE-03, RELI-01, RELI-02, RELI-03, LOG-01, LOG-02, LOG-03, SCALE-01, SCALE-02, DEPLOY-01, DEPLOY-02, DOC-01, DOC-02, DOC-03
+**Success Criteria** (what must be TRUE):
+  1. `npm start` не завершается после старта — процесс висит, лог показывает `daemon started, schedule: 0 20 * * * Europe/Moscow`; `Ctrl+C` вызывает `received SIGINT, stopping cron` и чистый `exit 0`
+  2. В 20:00 MSK дайджест приходит в закрытый канал автоматически без запуска оператором; summary-лог в `pm2-out.log` содержит `channels: total=50`, `delivered=true` и `durationMs`
+  3. PM2 smoke: `pm2 start ecosystem.config.js` → статус `online`; `pm2 kill && pm2 resurrect` восстанавливает daemon без ручного вмешательства
+  4. Обрыв сети во время прогона (wifi off/on ~10 сек) → в логе `reconnect attempt 1/3` → прогон продолжается, дайджест уходит; пропавший канал отражён в `errors[]` после исчерпания 3 попыток
+  5. Второй тик крона при активном прогоне пишет `prev run still in progress — skipping tick` и не запускает второй пайплайн
+  6. `npx tsc --noEmit` выдаёт 0 ошибок после всех изменений
+**Plans**: TBD
 
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. MVP дайджест | v1.0 | 3/3 | ✅ Complete | 2026-04-21 |
+| 2. Daemon + 50 каналов | v2.0 | 0/? | Not started | — |
 
 ---
-*Roadmap reorganized: 2026-04-21 at v1.0 milestone completion*
+*Roadmap updated: 2026-04-22 — v2.0 roadmap created (Phase 2, YOLO mode, 20 requirements)*
