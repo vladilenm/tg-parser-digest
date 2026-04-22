@@ -45,7 +45,7 @@ Full archive: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   5. Второй тик крона при активном прогоне пишет `prev run still in progress — skipping tick` и не запускает второй пайплайн
   6. `npx tsc --noEmit` выдаёт 0 ошибок после всех изменений
 **Plans**: 7 plans
-- [ ] 02-01-PLAN.md — Pipeline extract + RunSummary + in-memory dedupe [wave 1]
+- [x] 02-01-PLAN.md — Pipeline extract + RunSummary + in-memory dedupe [wave 1]
 - [ ] 02-02-PLAN.md — Structured logger + logRunSummary [wave 1]
 - [ ] 02-03-PLAN.md — channels.yaml → 50 + CHANNEL_DELAY_MS=1750 [wave 1, checkpoint]
 - [ ] 02-04-PLAN.md — GramJS reconnect retry in fetchLast24h [wave 2]

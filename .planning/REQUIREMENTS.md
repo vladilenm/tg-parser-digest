@@ -18,9 +18,9 @@
 
 ### Pipeline Refactor
 
-- [ ] **PIPE-01**: Логика прогона вынесена в `src/pipeline.ts` → `runPipeline(): Promise<RunSummary>`; `process.exit(...)` и глобальный `catch` уходят из entrypoint, ошибки пробрасываются вызывающему
-- [ ] **PIPE-02**: Клиент GramJS создаётся per-run внутри `runPipeline` и дисконнектится в `finally` — живую сессию между прогонами не держим
-- [ ] **PIPE-03**: In-memory дедуп с ключом `${username}:${messageId}` отбрасывает повторы в рамках одного прогона; в `RunSummary.postsDeduped` — количество отброшенных
+- [x] **PIPE-01**: Логика прогона вынесена в `src/pipeline.ts` → `runPipeline(): Promise<RunSummary>`; `process.exit(...)` и глобальный `catch` уходят из entrypoint, ошибки пробрасываются вызывающему
+- [x] **PIPE-02**: Клиент GramJS создаётся per-run внутри `runPipeline` и дисконнектится в `finally` — живую сессию между прогонами не держим
+- [x] **PIPE-03**: In-memory дедуп с ключом `${username}:${messageId}` отбрасывает повторы в рамках одного прогона; в `RunSummary.postsDeduped` — количество отброшенных
 
 ### Reliability
 
@@ -31,7 +31,7 @@
 ### Observability
 
 - [ ] **LOG-01**: `src/logger.ts` экспортирует `log.info/warn/error(msg, ...ctx)` с префиксом `[ISO-timestamp] [level]`, пишет через `console.log/warn/error`
-- [ ] **LOG-02**: В `src/types.ts` добавлен интерфейс `RunSummary` с полями `runId`, `startedAt`, `finishedAt`, `durationMs`, `channelsTotal`, `channelsSucceeded`, `channelsSkipped`, `postsCollected`, `postsDeduped`, `digestDelivered`, `errors[]`
+- [x] **LOG-02**: В `src/types.ts` добавлен интерфейс `RunSummary` с полями `runId`, `startedAt`, `finishedAt`, `durationMs`, `channelsTotal`, `channelsSucceeded`, `channelsSkipped`, `postsCollected`, `postsDeduped`, `digestDelivered`, `errors[]`
 - [ ] **LOG-03**: `logRunSummary(s: RunSummary)` печатает многострочный блок формата из `docs/phase-2.md` §4 (runId, duration, channels/posts-счётчики, delivered, список errors)
 
 ### Scale
@@ -104,14 +104,14 @@
 | DAEMON-02 | Phase 2 | Pending |
 | DAEMON-03 | Phase 2 | Pending |
 | DAEMON-04 | Phase 2 | Pending |
-| PIPE-01 | Phase 2 | Pending |
-| PIPE-02 | Phase 2 | Pending |
-| PIPE-03 | Phase 2 | Pending |
+| PIPE-01 | Phase 2 | Complete |
+| PIPE-02 | Phase 2 | Complete |
+| PIPE-03 | Phase 2 | Complete |
 | RELI-01 | Phase 2 | Pending |
 | RELI-02 | Phase 2 | Pending |
 | RELI-03 | Phase 2 | Pending |
 | LOG-01 | Phase 2 | Pending |
-| LOG-02 | Phase 2 | Pending |
+| LOG-02 | Phase 2 | Complete |
 | LOG-03 | Phase 2 | Pending |
 | SCALE-01 | Phase 2 | Pending |
 | SCALE-02 | Phase 2 | Pending |
