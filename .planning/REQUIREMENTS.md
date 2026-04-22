@@ -36,8 +36,8 @@
 
 ### Scale
 
-- [ ] **SCALE-01**: `channels.yaml` расширен до 50 каналов: к существующим 12 добавлено 38 публичных каналов по российскому нефтегазу/нефтехимии (нефтехимия/бункеровка/масла/битум/керосин), структура `{ username, priority }` сохранена
-- [ ] **SCALE-02**: `CHANNEL_DELAY_MS=1750` зафиксирован и в `.env.example`, и как дефолт в коде `src/pipeline.ts`
+- [x] **SCALE-01**: `channels.yaml` расширен до 50 каналов: к существующим 12 добавлено 38 публичных каналов по российскому нефтегазу/нефтехимии (нефтехимия/бункеровка/масла/битум/керосин), структура `{ username, priority }` сохранена
+- [x] **SCALE-02**: `CHANNEL_DELAY_MS=1750` зафиксирован и в `.env.example`, и как дефолт в коде `src/pipeline.ts`
 
 ### Deployment
 
@@ -113,8 +113,8 @@
 | LOG-01 | Phase 2 | Complete |
 | LOG-02 | Phase 2 | Complete |
 | LOG-03 | Phase 2 | Complete |
-| SCALE-01 | Phase 2 | Pending |
-| SCALE-02 | Phase 2 | Pending |
+| SCALE-01 | Phase 2 | Complete |
+| SCALE-02 | Phase 2 | Complete |
 | DEPLOY-01 | Phase 2 | Pending |
 | DEPLOY-02 | Phase 2 | Pending |
 | DOC-01 | Phase 2 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Автоматизация + 50 каналов
 status: executing
-last_updated: "2026-04-22T07:28:23.726Z"
+last_updated: "2026-04-22T07:32:16.795Z"
 last_activity: 2026-04-22
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 2
-  percent: 29
+  completed_plans: 3
+  percent: 43
 ---
 
 # State: tg-parser-demo
@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-04-22 с разделом Cur
 ## Current Position
 
 Phase: 02 (daemon-50) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-04-22
 
@@ -57,6 +57,8 @@ Last activity: 2026-04-22
 - Клиент GramJS создаётся per-run и дисконнектится в `finally` — живую сессию между прогонами не держим.
 - Новая runtime-dep `node-cron` (итого 4 вместо 3) — компромисс принят ради daemon-режима.
 - YOLO-режим: вся фаза v2.0 — одна атомарная Phase 2 (20 требований), без разбивки на подфазы.
+- Plan 02-03: SCALE-01 закрыт структурно через 38 PLACEHOLDER_NN-стабов (safe-skip pattern); замена на реальные username — non-blocking checkpoint оператора.
+- Plan 02-03: CHANNEL_DELAY_MS поднят 1000→1750 (SCALE-02); avg ~2000мс с jitter, запас против FloodWait на 50 каналах.
 
 ### Tech Debt (deferred, v1.0 backlog)
 
@@ -81,7 +83,7 @@ Last activity: 2026-04-22
 
 ## Session Continuity
 
-**Last session:** 2026-04-22T07:28:23.723Z
+**Last session:** 2026-04-22T07:32:16.793Z
 
 **Next action:** `/gsd-plan-phase 2` — спланировать и выполнить Phase 2
 
