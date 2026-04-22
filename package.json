@@ -11,12 +11,14 @@
     "start": "node --env-file=.env --import tsx src/run.ts"
   },
   "dependencies": {
+    "node-cron": "^3.0.3",
     "openai": "^4.0.0",
     "telegram": "^2.22.0",
     "yaml": "^2.5.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/node-cron": "^3.0.11",
     "tsx": "^4.0.0",
     "typescript": "^5.4.0"
   }
