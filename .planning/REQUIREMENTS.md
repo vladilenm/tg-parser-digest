@@ -24,9 +24,9 @@
 
 ### Reliability
 
-- [ ] **RELI-01**: В `src/telegram.ts` `fetchLast24h` распознаёт сетевые сбои (сообщение содержит `"not connected"`/`"Disconnect"`/`"TIMEOUT"`, `ConnectionError`, либо `client.connected === false`) и делает до 3 попыток exp. backoff 1000/2000/4000 мс с `await client.connect()` между попытками
-- [ ] **RELI-02**: После исчерпания reconnect-попыток канал помечается как skipped, прогон продолжается с остальными каналами, сообщение об ошибке добавляется в `RunSummary.errors` как `${username}: ${err.message}`
-- [ ] **RELI-03**: Reconnect-счётчик отделён от FloodWait-счётчика — один общий лимит на ретраи не складывает случаи сети и FloodWait
+- [x] **RELI-01**: В `src/telegram.ts` `fetchLast24h` распознаёт сетевые сбои (сообщение содержит `"not connected"`/`"Disconnect"`/`"TIMEOUT"`, `ConnectionError`, либо `client.connected === false`) и делает до 3 попыток exp. backoff 1000/2000/4000 мс с `await client.connect()` между попытками
+- [x] **RELI-02**: После исчерпания reconnect-попыток канал помечается как skipped, прогон продолжается с остальными каналами, сообщение об ошибке добавляется в `RunSummary.errors` как `${username}: ${err.message}`
+- [x] **RELI-03**: Reconnect-счётчик отделён от FloodWait-счётчика — один общий лимит на ретраи не складывает случаи сети и FloodWait
 
 ### Observability
 
@@ -107,9 +107,9 @@
 | PIPE-01 | Phase 2 | Complete |
 | PIPE-02 | Phase 2 | Complete |
 | PIPE-03 | Phase 2 | Complete |
-| RELI-01 | Phase 2 | Pending |
-| RELI-02 | Phase 2 | Pending |
-| RELI-03 | Phase 2 | Pending |
+| RELI-01 | Phase 2 | Complete |
+| RELI-02 | Phase 2 | Complete |
+| RELI-03 | Phase 2 | Complete |
 | LOG-01 | Phase 2 | Complete |
 | LOG-02 | Phase 2 | Complete |
 | LOG-03 | Phase 2 | Complete |
