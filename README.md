@@ -72,6 +72,77 @@ User-аккаунт, чей `TG_SESSION` лежит в `.env`, **должен б
 
 Сетевые сбои во время прогона: GramJS делает до 3 попыток reconnect с exp backoff (1s / 2s / 4s). При исчерпании канал помечается как skipped, попадает в `errors[]` summary-лога, прогон продолжается с остальными каналами.
 
+## Запуск на VPS (PM2)
+
+На VPS daemon запускается под PM2: process manager мониторит процесс, рестартует при падении, поднимается автоматически после перезагрузки сервера. Установить PM2 глобально нужно один раз:
+
+    npm install -g pm2
+
+Запуск и базовые операции:
+
+    # 1. Запустить daemon по ecosystem-конфигу
+    pm2 start ecosystem.config.cjs
+
+    # 2. Проверить статус
+    pm2 status
+
+    # 3. Посмотреть логи (stdout + stderr, tail -f)
+    pm2 logs tg-parser
+
+    # 4. Сохранить список процессов для auto-resurrect после перезагрузки
+    pm2 save
+
+    # 5. Настроить автозапуск PM2 при перезагрузке VPS
+    pm2 startup
+    # → PM2 выведет systemd-команду; выполни её (нужны sudo-права)
+
+Операции после изменения кода:
+
+    pm2 restart tg-parser       # graceful restart (SIGINT → ждёт текущий прогон → exit 0 → respawn)
+    pm2 reload tg-parser        # alias restart для fork mode
+    pm2 stop tg-parser          # остановить (без удаления из списка)
+    pm2 delete tg-parser        # удалить из списка
+
+`pm2 kill && pm2 resurrect` — полный перезапуск PM2-демона с восстановлением сохранённых процессов из `~/.pm2/dump.pm2` (нужно предварительно сделать `pm2 save`).
+
+Логи PM2:
+
+    pm2 logs tg-parser --out          # только stdout (наш logger)
+    pm2 logs tg-parser --err          # только stderr (warn/error)
+    ~/.pm2/logs/tg-parser-out.log     # файл stdout (для grep/tail)
+    ~/.pm2/logs/tg-parser-error.log   # файл stderr
+
+Конфиг daemon'а — в `ecosystem.config.cjs` (расширение `.cjs`, а не `.js`, потому что проект в ESM-режиме — `"type": "module"` в `package.json`). Ключевые параметры:
+- `kill_timeout: 180000` — PM2 ждёт до 3 минут после SIGINT перед SIGKILL, чтобы graceful shutdown успел завершить активный прогон.
+- `max_restarts: 10` + `min_uptime: "30s"` — защита от флап-рестартов (если daemon падает в первые 30с, PM2 сдаётся после 10 попыток).
+- `max_memory_restart: "300M"` — рестарт при утечке памяти.
+
+## Ежедневный summary-лог
+
+По итогу каждого tick (20:00 MSK) daemon печатает многострочный summary-блок в stdout (попадает в `~/.pm2/logs/tg-parser-out.log` на VPS):
+
+    [2026-04-22T17:00:42.123Z] [summary] runId=abc12345
+      duration=58.4s
+      channels: total=50 succeeded=47 skipped=3
+      posts: collected=412 deduped=5
+      delivered=true
+      errors:
+        - neftegazru: FloodWait retry exhausted
+        - oil_gas_forum: network disconnect after 3 attempts
+        - some_private: ChannelPrivateError
+
+Поля:
+- `runId` — короткий UUID прогона (для корреляции с предыдущими логами `[pipeline] runId=...`).
+- `duration` — длительность в секундах (на 50 каналах ожидается 90-180 сек).
+- `channels: total=N succeeded=M skipped=K` — сколько каналов прошли без ошибок и сколько помечены skipped (попали в errors[]).
+- `posts: collected=N deduped=K` — собрано уникальных постов и отброшено дублей по `${username}:${messageId}` в рамках прогона.
+- `delivered=true|false` — отправлен ли HTML-дайджест в приватный канал (false если `posts.collected === 0` — пустой день).
+- `errors:` — список ошибок в формате `${username}: ${message}`; секция не печатается если ошибок нет.
+
+Посмотреть последний summary-блок быстро:
+
+    pm2 logs tg-parser --out --nostream | grep -A 20 "\[summary\]" | tail -25
+
 ## Как проверить, что всё работает (5 критериев приёмки)
 
 1. **Сбор быстрый.** `npm start` на 15 каналах завершается за < 60 секунд и не выбрасывает `FloodWaitError`.
