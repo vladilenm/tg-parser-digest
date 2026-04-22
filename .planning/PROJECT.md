@@ -8,6 +8,23 @@
 
 За один `npm start` получить в закрытом канале дайджест событий нефтегаза за последние 24 часа, в котором **каждая цитата дословно присутствует в исходном посте** — без галлюцинаций LLM.
 
+## Current Milestone: v2.0 Автоматизация + 50 каналов
+
+**Goal:** Перевести парсер из одноразового скрипта в daemon-режим на VPS с ежедневным автозапуском в 20:00 MSK и расширить охват до 50 каналов — без потери экстрактивной дисциплины `keyQuote`.
+
+**Target features:**
+- `npm start` становится long-running daemon с `node-cron` (`0 20 * * *`, `Europe/Moscow`) — прогон только по расписанию, без run-on-start.
+- Выделение пайплайна в `src/pipeline.ts` (`runPipeline(): Promise<RunSummary>`, без `process.exit`).
+- In-memory дедуп `${username}:${messageId}` в рамках одного прогона.
+- Graceful reconnect GramJS на сетевых сбоях: 3 попытки exp. backoff (1s/2s/4s), отдельно от FloodWait/ChannelPrivate.
+- Структурированное логирование (`src/logger.ts`) + тип `RunSummary` (runId, counters, errors[]).
+- Расширение `channels.yaml` до 50 каналов (+38 по российскому нефтегазу/нефтехимии).
+- `CHANNEL_DELAY_MS` 1000 → 1750 для спокойного темпа на 50 каналах.
+- PM2 config (`ecosystem.config.js`) для деплоя на VPS; mutex `isRunning` + graceful SIGINT/SIGTERM.
+- README: секция «Запуск на VPS (PM2)» и пример summary-лога.
+
+**Source spec:** [docs/phase-2.md](../docs/phase-2.md) (готовый план изменений, утверждён оператором).
+
 ## Requirements
 
 ### Validated
@@ -34,7 +51,16 @@ Validated in Phase 1 (MVP дайджест, 2026-04-21):
 
 <!-- Current scope. Building toward these. -->
 
-(Milestone MVP v1.0 завершён — нет активных требований. Следующий milestone ещё не определён.)
+Milestone v2.0 «Автоматизация + 50 каналов» (REQ-IDs назначаются в `REQUIREMENTS.md`):
+
+- Daemon-режим `npm start` с `node-cron` + mutex + graceful shutdown
+- Выделение `runPipeline()` в `src/pipeline.ts` с возвратом `RunSummary`
+- In-memory дедуп постов `username:messageId` в рамках прогона
+- Graceful reconnect GramJS на сетевых сбоях (3 попытки exp. backoff)
+- Структурированное логирование + summary-лог на прогон
+- Расширение `channels.yaml` до 50 каналов, `CHANNEL_DELAY_MS=1750`
+- PM2 config (`ecosystem.config.js`) для деплоя на VPS
+- Документация: README секция VPS/PM2 и пример summary-лога
 
 ### Out of Scope
 
@@ -106,4 +132,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 after v1.0 milestone complete*
+*Last updated: 2026-04-22 — milestone v2.0 «Автоматизация + 50 каналов» started*
