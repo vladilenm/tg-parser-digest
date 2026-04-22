@@ -2,6 +2,11 @@
 # User-аккаунт из TG_SESSION ОБЯЗАН быть подписан на каждый из них —
 # иначе GramJS бросит ChannelPrivateError (этот канал будет пропущен).
 # Поле priority зарезервировано (не используется в MVP).
+#
+# PLACEHOLDER_NN-записи (priority: 5) — стабы для SCALE-01. Оператор заменяет
+# каждую на реальный username публичного канала нефтегаза РФ перед первым
+# 20:00-прогоном. Если не заменить — канал просто пометится skipped
+# (UsernameNotOccupiedError/UsernameInvalidError), прогон продолжится.
 
 channels:
   - username: "neftegazru"
@@ -28,3 +33,79 @@ channels:
     priority: 4
   - username: "prime1"
     priority: 4
+  - username: "PLACEHOLDER_01"
+    priority: 5
+  - username: "PLACEHOLDER_02"
+    priority: 5
+  - username: "PLACEHOLDER_03"
+    priority: 5
+  - username: "PLACEHOLDER_04"
+    priority: 5
+  - username: "PLACEHOLDER_05"
+    priority: 5
+  - username: "PLACEHOLDER_06"
+    priority: 5
+  - username: "PLACEHOLDER_07"
+    priority: 5
+  - username: "PLACEHOLDER_08"
+    priority: 5
+  - username: "PLACEHOLDER_09"
+    priority: 5
+  - username: "PLACEHOLDER_10"
+    priority: 5
+  - username: "PLACEHOLDER_11"
+    priority: 5
+  - username: "PLACEHOLDER_12"
+    priority: 5
+  - username: "PLACEHOLDER_13"
+    priority: 5
+  - username: "PLACEHOLDER_14"
+    priority: 5
+  - username: "PLACEHOLDER_15"
+    priority: 5
+  - username: "PLACEHOLDER_16"
+    priority: 5
+  - username: "PLACEHOLDER_17"
+    priority: 5
+  - username: "PLACEHOLDER_18"
+    priority: 5
+  - username: "PLACEHOLDER_19"
+    priority: 5
+  - username: "PLACEHOLDER_20"
+    priority: 5
+  - username: "PLACEHOLDER_21"
+    priority: 5
+  - username: "PLACEHOLDER_22"
+    priority: 5
+  - username: "PLACEHOLDER_23"
+    priority: 5
+  - username: "PLACEHOLDER_24"
+    priority: 5
+  - username: "PLACEHOLDER_25"
+    priority: 5
+  - username: "PLACEHOLDER_26"
+    priority: 5
+  - username: "PLACEHOLDER_27"
+    priority: 5
+  - username: "PLACEHOLDER_28"
+    priority: 5
+  - username: "PLACEHOLDER_29"
+    priority: 5
+  - username: "PLACEHOLDER_30"
+    priority: 5
+  - username: "PLACEHOLDER_31"
+    priority: 5
+  - username: "PLACEHOLDER_32"
+    priority: 5
+  - username: "PLACEHOLDER_33"
+    priority: 5
+  - username: "PLACEHOLDER_34"
+    priority: 5
+  - username: "PLACEHOLDER_35"
+    priority: 5
+  - username: "PLACEHOLDER_36"
+    priority: 5
+  - username: "PLACEHOLDER_37"
+    priority: 5
+  - username: "PLACEHOLDER_38"
+    priority: 5
