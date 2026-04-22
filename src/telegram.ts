@@ -100,8 +100,25 @@ export async function fetchLast24h(
     return results;
   };
 
-  let retried = false;
-  // Внешний loop — максимум 2 попытки (один retry на FloodWait).
+  // RELI-03: два независимых счётчика — FloodWait retry и reconnect attempts.
+  // Счётчики НЕ суммируются и НЕ взаимоблокируются: один FloodWait + три reconnect = 4 итерации loop.
+  let floodRetried = false;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT = 3;
+  const RECONNECT_BACKOFF = [1000, 2000, 4000];
+
+  const isNetworkError = (err: unknown): boolean => {
+    const msg = (err as Error)?.message ?? String(err);
+    return (
+      msg.includes("Not connected") ||
+      msg.includes("Disconnect") ||
+      msg.includes("TIMEOUT") ||
+      msg.includes("no data received") ||
+      (client as unknown as { connected?: boolean }).connected === false
+    );
+  };
+
+  // Внешний loop: одна попытка + до 1 FloodWait retry + до 3 reconnect retry (независимо).
   while (true) {
     try {
       return await tryFetch();
@@ -110,7 +127,7 @@ export async function fetchLast24h(
         (err as { constructor?: { name?: string } } | null)?.constructor?.name ?? "";
       const errorMessage = (err as Error)?.message ?? String(err);
 
-      // FETCH-05: частные ошибки канала — warn + пустой массив.
+      // FETCH-05: частные ошибки канала — warn + пустой массив (не ретраим).
       if (
         name === "ChannelPrivateError" ||
         name === "UsernameNotOccupiedError" ||
@@ -123,10 +140,12 @@ export async function fetchLast24h(
         return [];
       }
 
-      // FETCH-04: FloodWait — один retry.
+      // FETCH-04: FloodWait — один retry (независимый от reconnect, RELI-03).
+      // Ветка использует ТОЛЬКО floodRetried;
+      // второй счётчик (сетевой) не читается и не инкрементируется здесь.
       if (err instanceof FloodWaitError || name === "FloodWaitError") {
         const seconds = (err as unknown as { seconds?: number }).seconds ?? 30;
-        if (retried) {
+        if (floodRetried) {
           console.error(`[telegram] second FloodWait on ${username}, aborting (${seconds}s).`);
           throw err;
         }
@@ -134,11 +153,34 @@ export async function fetchLast24h(
           `[telegram] FloodWait on ${username}: sleeping ${seconds}s + 2s, then retry.`
         );
         await sleep(seconds * 1000 + 2000);
-        retried = true;
+        floodRetried = true;
         continue;
       }
 
-      // Прочие ошибки — пробрасываем наверх (поймается в src/run.ts).
+      // RELI-01: сетевая ошибка — до 3 попыток exp backoff 1000/2000/4000мс.
+      // Ветка использует ТОЛЬКО reconnectAttempts;
+      // другой счётчик (FloodWait-retry) не читается и не инкрементируется здесь.
+      if (isNetworkError(err)) {
+        if (reconnectAttempts >= MAX_RECONNECT) {
+          throw new Error(
+            `${username}: network disconnect after ${MAX_RECONNECT} attempts (${errorMessage})`
+          );
+        }
+        const delay = RECONNECT_BACKOFF[reconnectAttempts] ?? 4000;
+        console.warn(
+          `[telegram] reconnect attempt ${reconnectAttempts + 1}/${MAX_RECONNECT} for ${username}, waiting ${delay}ms`
+        );
+        await sleep(delay);
+        try {
+          await client.connect();
+        } catch {
+          // Игнорируем ошибку connect — следующая итерация снова попробует tryFetch.
+        }
+        reconnectAttempts++;
+        continue;
+      }
+
+      // Прочие ошибки — пробрасываем (pipeline поймает в per-channel try/catch).
       throw err;
     }
   }
