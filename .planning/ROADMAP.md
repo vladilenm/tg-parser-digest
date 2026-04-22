@@ -44,14 +44,21 @@ Full archive: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   4. Обрыв сети во время прогона (wifi off/on ~10 сек) → в логе `reconnect attempt 1/3` → прогон продолжается, дайджест уходит; пропавший канал отражён в `errors[]` после исчерпания 3 попыток
   5. Второй тик крона при активном прогоне пишет `prev run still in progress — skipping tick` и не запускает второй пайплайн
   6. `npx tsc --noEmit` выдаёт 0 ошибок после всех изменений
-**Plans**: TBD
+**Plans**: 7 plans
+- [ ] 02-01-PLAN.md — Pipeline extract + RunSummary + in-memory dedupe [wave 1]
+- [ ] 02-02-PLAN.md — Structured logger + logRunSummary [wave 1]
+- [ ] 02-03-PLAN.md — channels.yaml → 50 + CHANNEL_DELAY_MS=1750 [wave 1, checkpoint]
+- [ ] 02-04-PLAN.md — GramJS reconnect retry in fetchLast24h [wave 2]
+- [ ] 02-05-PLAN.md — Daemon entrypoint + node-cron + mutex + SIGINT/SIGTERM + smoke-test [wave 3, checkpoint]
+- [ ] 02-06-PLAN.md — PM2 ecosystem.config.js + kill_timeout [wave 3]
+- [ ] 02-07-PLAN.md — README: VPS/PM2 + daemon-режим + summary-лог + удалить старую дисциплину [wave 4]
 
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. MVP дайджест | v1.0 | 3/3 | ✅ Complete | 2026-04-21 |
-| 2. Daemon + 50 каналов | v2.0 | 0/? | Not started | — |
+| 2. Daemon + 50 каналов | v2.0 | 0/7 | Plans ready | — |
 
 ---
-*Roadmap updated: 2026-04-22 — v2.0 roadmap created (Phase 2, YOLO mode, 20 requirements)*
+*Roadmap updated: 2026-04-22 — Phase 2 planned (7 plans, 4 waves)*
