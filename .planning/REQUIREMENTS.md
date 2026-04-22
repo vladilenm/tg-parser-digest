@@ -30,9 +30,9 @@
 
 ### Observability
 
-- [ ] **LOG-01**: `src/logger.ts` экспортирует `log.info/warn/error(msg, ...ctx)` с префиксом `[ISO-timestamp] [level]`, пишет через `console.log/warn/error`
+- [x] **LOG-01**: `src/logger.ts` экспортирует `log.info/warn/error(msg, ...ctx)` с префиксом `[ISO-timestamp] [level]`, пишет через `console.log/warn/error`
 - [x] **LOG-02**: В `src/types.ts` добавлен интерфейс `RunSummary` с полями `runId`, `startedAt`, `finishedAt`, `durationMs`, `channelsTotal`, `channelsSucceeded`, `channelsSkipped`, `postsCollected`, `postsDeduped`, `digestDelivered`, `errors[]`
-- [ ] **LOG-03**: `logRunSummary(s: RunSummary)` печатает многострочный блок формата из `docs/phase-2.md` §4 (runId, duration, channels/posts-счётчики, delivered, список errors)
+- [x] **LOG-03**: `logRunSummary(s: RunSummary)` печатает многострочный блок формата из `docs/phase-2.md` §4 (runId, duration, channels/posts-счётчики, delivered, список errors)
 
 ### Scale
 
@@ -110,9 +110,9 @@
 | RELI-01 | Phase 2 | Pending |
 | RELI-02 | Phase 2 | Pending |
 | RELI-03 | Phase 2 | Pending |
-| LOG-01 | Phase 2 | Pending |
+| LOG-01 | Phase 2 | Complete |
 | LOG-02 | Phase 2 | Complete |
-| LOG-03 | Phase 2 | Pending |
+| LOG-03 | Phase 2 | Complete |
 | SCALE-01 | Phase 2 | Pending |
 | SCALE-02 | Phase 2 | Pending |
 | DEPLOY-01 | Phase 2 | Pending |
