@@ -11,10 +11,10 @@
 
 ### Daemon Runtime
 
-- [ ] **DAEMON-01**: `npm start` работает как long-running daemon, не завершается после старта; graceful shutdown по SIGINT/SIGTERM с ожиданием активного прогона перед `exit 0`
-- [ ] **DAEMON-02**: Ежедневный прогон по `node-cron` с выражением `0 20 * * *` и `timezone: "Europe/Moscow"`
-- [ ] **DAEMON-03**: Mutex `isRunning` — если предыдущий прогон ещё активен, второй тик пишет `prev run still in progress — skipping tick` и выходит без запуска пайплайна
-- [ ] **DAEMON-04**: Прогон запускается только по расписанию; старт процесса (включая PM2-рестарт) не триггерит дайджест
+- [x] **DAEMON-01**: `npm start` работает как long-running daemon, не завершается после старта; graceful shutdown по SIGINT/SIGTERM с ожиданием активного прогона перед `exit 0`
+- [x] **DAEMON-02**: Ежедневный прогон по `node-cron` с выражением `0 20 * * *` и `timezone: "Europe/Moscow"`
+- [x] **DAEMON-03**: Mutex `isRunning` — если предыдущий прогон ещё активен, второй тик пишет `prev run still in progress — skipping tick` и выходит без запуска пайплайна
+- [x] **DAEMON-04**: Прогон запускается только по расписанию; старт процесса (включая PM2-рестарт) не триггерит дайджест
 
 ### Pipeline Refactor
 
@@ -42,7 +42,7 @@
 ### Deployment
 
 - [ ] **DEPLOY-01**: `ecosystem.config.js` в корне проекта с конфигом PM2: `script: "src/run.ts"`, `interpreter: "node"`, `interpreter_args: "--env-file=.env --import tsx"`, `instances: 1`, `exec_mode: "fork"`, `autorestart: true`, `max_restarts: 10`, `min_uptime: "30s"`, `max_memory_restart: "300M"`, `time: true`
-- [ ] **DEPLOY-02**: `package.json` получает runtime-dep `node-cron@^3.0.3` и devDep `@types/node-cron@^3.0.11`; существующие скрипты `npm start`/`npm run login` не переименовываются
+- [x] **DEPLOY-02**: `package.json` получает runtime-dep `node-cron@^3.0.3` и devDep `@types/node-cron@^3.0.11`; существующие скрипты `npm start`/`npm run login` не переименовываются
 
 ### Documentation
 
@@ -100,10 +100,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DAEMON-01 | Phase 2 | Pending |
-| DAEMON-02 | Phase 2 | Pending |
-| DAEMON-03 | Phase 2 | Pending |
-| DAEMON-04 | Phase 2 | Pending |
+| DAEMON-01 | Phase 2 | Complete |
+| DAEMON-02 | Phase 2 | Complete |
+| DAEMON-03 | Phase 2 | Complete |
+| DAEMON-04 | Phase 2 | Complete |
 | PIPE-01 | Phase 2 | Complete |
 | PIPE-02 | Phase 2 | Complete |
 | PIPE-03 | Phase 2 | Complete |
@@ -116,7 +116,7 @@
 | SCALE-01 | Phase 2 | Complete |
 | SCALE-02 | Phase 2 | Complete |
 | DEPLOY-01 | Phase 2 | Pending |
-| DEPLOY-02 | Phase 2 | Pending |
+| DEPLOY-02 | Phase 2 | Complete |
 | DOC-01 | Phase 2 | Pending |
 | DOC-02 | Phase 2 | Pending |
 | DOC-03 | Phase 2 | Pending |
