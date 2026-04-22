@@ -41,7 +41,7 @@
 
 ### Deployment
 
-- [ ] **DEPLOY-01**: `ecosystem.config.js` в корне проекта с конфигом PM2: `script: "src/run.ts"`, `interpreter: "node"`, `interpreter_args: "--env-file=.env --import tsx"`, `instances: 1`, `exec_mode: "fork"`, `autorestart: true`, `max_restarts: 10`, `min_uptime: "30s"`, `max_memory_restart: "300M"`, `time: true`
+- [x] **DEPLOY-01**: `ecosystem.config.js` в корне проекта с конфигом PM2: `script: "src/run.ts"`, `interpreter: "node"`, `interpreter_args: "--env-file=.env --import tsx"`, `instances: 1`, `exec_mode: "fork"`, `autorestart: true`, `max_restarts: 10`, `min_uptime: "30s"`, `max_memory_restart: "300M"`, `time: true`
 - [x] **DEPLOY-02**: `package.json` получает runtime-dep `node-cron@^3.0.3` и devDep `@types/node-cron@^3.0.11`; существующие скрипты `npm start`/`npm run login` не переименовываются
 
 ### Documentation
@@ -115,7 +115,7 @@
 | LOG-03 | Phase 2 | Complete |
 | SCALE-01 | Phase 2 | Complete |
 | SCALE-02 | Phase 2 | Complete |
-| DEPLOY-01 | Phase 2 | Pending |
+| DEPLOY-01 | Phase 2 | Complete |
 | DEPLOY-02 | Phase 2 | Complete |
 | DOC-01 | Phase 2 | Pending |
 | DOC-02 | Phase 2 | Pending |
