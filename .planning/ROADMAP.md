@@ -51,7 +51,7 @@ Full archive: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - [x] 02-04-PLAN.md — GramJS reconnect retry in fetchLast24h [wave 2]
 - [x] 02-05-PLAN.md — Daemon entrypoint + node-cron + mutex + SIGINT/SIGTERM + smoke-test [wave 3, checkpoint]
 - [x] 02-06-PLAN.md — PM2 ecosystem.config.js + kill_timeout [wave 3]
-- [ ] 02-07-PLAN.md — README: VPS/PM2 + daemon-режим + summary-лог + удалить старую дисциплину [wave 4]
+- [x] 02-07-PLAN.md — README: VPS/PM2 + daemon-режим + summary-лог + удалить старую дисциплину [wave 4]
 
 ## Progress
 

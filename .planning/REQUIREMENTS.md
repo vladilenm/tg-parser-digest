@@ -46,9 +46,9 @@
 
 ### Documentation
 
-- [ ] **DOC-01**: README секция «Запуск на VPS (PM2)» с командами `pm2 start ecosystem.config.js`, `pm2 logs tg-parser`, `pm2 save`, `pm2 startup`
-- [ ] **DOC-02**: README отражает daemon-режим `npm start` (Ctrl+C для локальной остановки); старая формулировка «не чаще 1 прогона в 10–15 минут» удалена, т.к. контроль частоты теперь на стороне крона
-- [ ] **DOC-03**: README содержит секцию «Ежедневный summary-лог» с примером вывода (runId, duration, channels/posts, errors)
+- [x] **DOC-01**: README секция «Запуск на VPS (PM2)» с командами `pm2 start ecosystem.config.js`, `pm2 logs tg-parser`, `pm2 save`, `pm2 startup`
+- [x] **DOC-02**: README отражает daemon-режим `npm start` (Ctrl+C для локальной остановки); старая формулировка «не чаще 1 прогона в 10–15 минут» удалена, т.к. контроль частоты теперь на стороне крона
+- [x] **DOC-03**: README содержит секцию «Ежедневный summary-лог» с примером вывода (runId, duration, channels/posts, errors)
 
 ## Future Requirements
 
@@ -117,9 +117,9 @@
 | SCALE-02 | Phase 2 | Complete |
 | DEPLOY-01 | Phase 2 | Complete |
 | DEPLOY-02 | Phase 2 | Complete |
-| DOC-01 | Phase 2 | Pending |
-| DOC-02 | Phase 2 | Pending |
-| DOC-03 | Phase 2 | Pending |
+| DOC-01 | Phase 2 | Complete |
+| DOC-02 | Phase 2 | Complete |
+| DOC-03 | Phase 2 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 20 total
