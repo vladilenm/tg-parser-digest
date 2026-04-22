@@ -24,3 +24,17 @@ export interface DigestJson {
   generatedAt: string; // ISO 8601, заполняется DeepSeek-ом
   sections: DigestSection[];
 }
+
+export interface RunSummary {
+  runId: string; // crypto.randomUUID().slice(0, 8)
+  startedAt: string; // ISO 8601
+  finishedAt: string; // ISO 8601
+  durationMs: number;
+  channelsTotal: number;
+  channelsSucceeded: number; // вернули >=0 постов без throw
+  channelsSkipped: number; // throw после исчерпания retry
+  postsCollected: number; // уникальных постов после дедупа
+  postsDeduped: number; // отброшено дублей по ${username}:${messageId}
+  digestDelivered: boolean; // true если sendToChannel отработал
+  errors: string[]; // `${username}: ${err.message}`
+}
