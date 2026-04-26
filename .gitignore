@@ -8,6 +8,10 @@ node_modules/
 # Logs
 *.log
 
+# Runtime data archives (raw + output + hash-cache)
+data/*
+!data/.gitkeep
+
 # OS
 .DS_Store
 
