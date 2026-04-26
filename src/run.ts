@@ -5,6 +5,7 @@
 import cron from "node-cron";
 import { runPipeline } from "./pipeline.js";
 import { log, logRunSummary } from "./logger.js";
+import { sendAlert } from "./alert.js";
 
 // DAEMON-03: mutex от параллельных тиков. In-memory boolean — достаточно для single-process PM2 fork.
 let isRunning = false;
@@ -19,7 +20,23 @@ async function tick(): Promise<void> {
     const summary = await runPipeline();
     logRunSummary(summary);
   } catch (err) {
-    log.error("pipeline failed", err);
+    const e = err as Error;
+    log.error("pipeline failed", e);
+    // ALERT-02 (D-12, D-13): await — не fire-and-forget, чтобы 60s-окно гарантировалось.
+    // runId внутри pipeline нам недоступен (упало, не дошло до return);
+    // используем отдельный alertId для трассировки.
+    const alertId = crypto.randomUUID().slice(0, 8);
+    try {
+      await sendAlert({
+        stage: "tick",
+        message: e?.message ?? String(err),
+        runId: alertId,
+        stack: e?.stack,
+      });
+    } catch (alertErr) {
+      // D-15: alert-on-alert-fail → log.error, не падаем дальше.
+      log.error("alert send failed", alertErr);
+    }
   } finally {
     isRunning = false;
   }
