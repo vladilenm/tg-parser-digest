@@ -123,15 +123,51 @@ function verifyExtractiveness(
 }
 
 // ============================================================================
-// Рендер HTML (D-09..D-13, SUM-04). Чистая конкатенация строк, без шаблонизаторов.
-// D-09: шапка `<b>Нефтегаз — {date}</b>\n<i>{N} постов из {K} каналов за 24ч</i>\n\n`.
-//   N = общее число собранных постов (posts.length — плана).
-//   K = число каналов с ≥1 собранным постом.
-// D-10: заголовок темы = `<b>{title}</b>` (без emoji, без нумерации).
-// D-11: буллет = `• {summary} — <i>«{keyQuote}»</i> — <a href="{url}">@{channel}</a>`.
-// D-12: разделитель секций — одна пустая строка (\n\n).
-// D-13: escapeHtml для summary/keyQuote/channel; url валидируется через new URL().
+// RENDER-01..02: 5 фиксированных секций emoji+<b> + блок «Упоминания компаний» (orphans).
+// Порядок секций — D-03 (фиксированный, не сортируем по count).
+// Пустая секция: <i>— нет упоминаний за сутки</i> (D-02).
+// Каждый item содержит deep-link <a href="https://t.me/<channel>/<msgId>">@channel</a> (RENDER-02).
+// Inline-маркер [РОСНЕФТЬ] / [ЛУКОЙЛ] / [ГАЗПРОМ] перед summary, если у item непустой mentions[]
+// (D-04 + specifics). Пробел между маркерами и summary, без точек.
 // ============================================================================
+
+const SECTION_HEADERS: Array<{ key: keyof Pick<DigestJson, "bunker"|"oil"|"kerosene"|"petrochem"|"bitumen"|"mentions">; header: string }> = [
+  { key: "bunker",    header: "🚢 Бункер" },
+  { key: "oil",       header: "🛢 Масла" },
+  { key: "kerosene",  header: "✈️ Керосин" },
+  { key: "petrochem", header: "⚗️ Нефтехимия" },
+  { key: "bitumen",   header: "🛣 Битум" },
+  { key: "mentions",  header: "🏢 Упоминания компаний" },
+];
+
+const MENTION_LABEL: Record<Mention, string> = {
+  rosneft: "РОСНЕФТЬ",
+  lukoil: "ЛУКОЙЛ",
+  gazprom: "ГАЗПРОМ",
+};
+
+function renderItem(item: DigestItem): string | null {
+  // RENDER-02: валидация url через new URL(), невалидный — пропускаем
+  let safeUrl: string;
+  try {
+    safeUrl = new URL(item.url).toString();
+  } catch {
+    console.warn(`[summarize] skip (bad url): ${item.url}`);
+    return null;
+  }
+
+  // D-04 + specifics: inline-маркеры для непустого mentions, в фиксированном порядке.
+  // Несколько компаний → подряд через пробел: <b>[РОСНЕФТЬ] [ЛУКОЙЛ]</b>.
+  let prefix = "";
+  if (item.mentions.length > 0) {
+    const labels = item.mentions.map((m) => `[${MENTION_LABEL[m]}]`).join(" ");
+    prefix = `<b>${labels}</b> `;
+  }
+
+  // D-05: формат буллета.
+  return `• ${prefix}${escapeHtml(item.summary)} — <i>«${escapeHtml(item.keyQuote)}»</i> — <a href="${safeUrl}">@${escapeHtml(item.channel)}</a>`;
+}
+
 export function renderHtml(digest: DigestJson, posts: Post[]): string {
   const date = formatDateRu(digest.generatedAt);
   const n = posts.length;
@@ -142,27 +178,22 @@ export function renderHtml(digest: DigestJson, posts: Post[]): string {
     `<i>${n} постов из ${k} каналов за 24ч</i>\n\n`;
 
   const sectionsHtml: string[] = [];
-  for (const section of digest.sections) {
-    const lines: string[] = [];
-    lines.push(`<b>${escapeHtml(section.title)}</b>`);
-    for (const item of section.items) {
-      // D-13: валидация url через new URL(). Невалидный — пропускаем.
-      let safeUrl: string;
-      try {
-        safeUrl = new URL(item.url).toString();
-      } catch {
-        console.warn(`[summarize] skip (bad url): ${item.url}`);
-        continue;
+  for (const { key, header: sectionHeader } of SECTION_HEADERS) {
+    const items = digest[key];
+    const lines: string[] = [`<b>${sectionHeader}</b>`];
+    if (items.length === 0) {
+      // D-02: явная пометка пустой секции.
+      lines.push(`<i>— нет упоминаний за сутки</i>`);
+    } else {
+      for (const item of items) {
+        const rendered = renderItem(item);
+        if (rendered !== null) lines.push(rendered);
       }
-      // D-11: точный формат буллета.
-      lines.push(
-        `• ${escapeHtml(item.summary)} — <i>«${escapeHtml(item.keyQuote)}»</i> — <a href="${safeUrl}">@${escapeHtml(item.channel)}</a>`
-      );
     }
     sectionsHtml.push(lines.join("\n"));
   }
 
-  // D-12: между секциями — \n\n (пустая строка).
+  // Между секциями — \n\n (пустая строка, граница для chunkHtml).
   return header + sectionsHtml.join("\n\n");
 }
 
