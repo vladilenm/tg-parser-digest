@@ -2,28 +2,27 @@
 
 ## What This Is
 
-Один исполняемый Node.js-скрипт, который читает 10–15 публичных Telegram-каналов по российскому нефтегазу/нефтехимии за последние 24 часа, прогоняет все посты через DeepSeek и отправляет экстрактивный HTML-дайджест в мой личный закрытый Telegram-канал. Запуск — руками (`npm start`) с рабочей машины, между запусками состояние не хранится.
+Node.js-daemon (`npm start` под PM2 на VPS), который ежедневно в 20:00 MSK читает до 50 публичных Telegram-каналов по российскому нефтегазу/нефтехимии за последние 24 часа, прогоняет все посты через DeepSeek и отправляет ранжированный по 5 направлениям дайджест с пометкой упоминаний Роснефть/Лукойл/Газпром в закрытый Telegram-канал Заказчика. С v3.0 — с кросс-прогонной дедупой через файловый hash-cache, файловыми архивами raw/output и алертами в личку владельца на любую ошибку pipeline.
 
 ## Core Value
 
-За один `npm start` получить в закрытом канале дайджест событий нефтегаза за последние 24 часа, в котором **каждая цитата дословно присутствует в исходном посте** — без галлюцинаций LLM.
+В 20:00 MSK без вмешательства оператора получать в закрытом канале Заказчика структурированный дайджест нефтегаза за последние 24 часа, ранжированный по 5 направлениям и помеченный упоминаниями Роснефть/Лукойл/Газпром, в котором **каждая цитата дословно присутствует в исходном посте** — без галлюцинаций LLM, без повторов из вчерашних сводок, с полным архивом прогонов на ФС.
 
-## Current Milestone: v2.0 Автоматизация + 50 каналов
+## Current Milestone: v3.0 Structured digest + persistence + Stage 1 acceptance
 
-**Goal:** Перевести парсер из одноразового скрипта в daemon-режим на VPS с ежедневным автозапуском в 20:00 MSK и расширить охват до 50 каналов — без потери экстрактивной дисциплины `keyQuote`.
+**Goal:** После v3.0 я смогу подписать Акт по Этапу 1 договора №2020 (Заказчик — Роснефть через ИП-посредника), получить 275к второго платежа, и оставить daemon работать минимум 3 недели в авто-режиме без вмешательства, пока буду проектировать v4.0 (Этап 2 — верификация по официальным источникам).
 
 **Target features:**
-- `npm start` становится long-running daemon с `node-cron` (`0 20 * * *`, `Europe/Moscow`) — прогон только по расписанию, без run-on-start.
-- Выделение пайплайна в `src/pipeline.ts` (`runPipeline(): Promise<RunSummary>`, без `process.exit`).
-- In-memory дедуп `${username}:${messageId}` в рамках одного прогона.
-- Graceful reconnect GramJS на сетевых сбоях: 3 попытки exp. backoff (1s/2s/4s), отдельно от FloodWait/ChannelPrivate.
-- Структурированное логирование (`src/logger.ts`) + тип `RunSummary` (runId, counters, errors[]).
-- Расширение `channels.yaml` до 50 каналов (+38 по российскому нефтегазу/нефтехимии).
-- `CHANNEL_DELAY_MS` 1000 → 1750 для спокойного темпа на 50 каналах.
-- PM2 config (`ecosystem.config.js`) для деплоя на VPS; mutex `isRunning` + graceful SIGINT/SIGTERM.
-- README: секция «Запуск на VPS (PM2)» и пример summary-лога.
+- Структурированный JSON-ответ DeepSeek по 5 направлениям (бункер/масла/керосин/нефтехимия/битум) + блок упоминаний Роснефть/Лукойл/Газпром; Zod-валидация ответа + retry x1 при невалидной схеме; пост вне 5 категорий — drop.
+- Markdown-рендер по секциям, deep-link `t.me/<channel>/<msgId>` на каждом item, нарезка >4096 символов; пустые категории помечены `— нет упоминаний за сутки`.
+- Кросс-прогонная дедупа: SHA-256 от нормализованного текста (lowercase, без эмодзи/пунктуации, первые 200 символов); `hash-cache.json` rolling 14 дней, фильтрация по timestamp при загрузке.
+- Архивы прогонов на ФС: `data/raw/YYYY-MM-DD.json` (все собранные сообщения за день) и `data/output/YYYY-MM-DD.md` (финальная сводка, идентична отправленной); атомарная запись через `.tmp + rename`.
+- Отдельный alert-bot (`BOT_TOKEN_ALERTS`, `ALERTS_CHAT_ID`) шлёт в личку владельца на любую ошибку pipeline; алерт включает stage, error.message, runId, stack.
+- Документация Этапа 1: `docs/RUNBOOK.md` (5 сценариев сбоя — DeepSeek 5xx, TG flood limit, парсер не видит канал, диск переполнен, network down) и `docs/CHANNELS.md` (lifecycle канала: добавление/удаление/карантин).
+- Acceptance-пакет: 7 последовательных суток непрерывных сводок + заполненное Приложение №2 (Отчёт), 7 скриншотов, лог-выписка с uptime, 3 markdown-файла документации.
 
-**Source spec:** [docs/phase-2.md](../docs/phase-2.md) (готовый план изменений, утверждён оператором).
+**Source spec:** [docs/intent-v3.0.md](../docs/intent-v3.0.md) (utter milestone-context, утверждён оператором 2026-04-26).
+**Deadline:** 2 рабочих дня на код, 7-day smoke до 22.05.2026 (срок Этапа 1+2 договора).
 
 ## Requirements
 
@@ -47,72 +46,93 @@ Validated in Phase 1 (MVP дайджест, 2026-04-21):
 - [x] Пустой день: если постов 0 — логируем `No posts in window`, выходим с кодом 0, DeepSeek и Telegram не дёргаем
 - [x] README: запуск в 3 команды + дисциплина «не чаще одного прогона в 10–15 минут»
 
+Validated in Phase 2 (Daemon + 50 каналов, 2026-04-26, code complete):
+
+- [x] **DAEMON-01..04**: `npm start` — long-running daemon с `node-cron` (`'0 20 * * *'`, `Europe/Moscow`); mutex `isRunning`; SIGINT/SIGTERM ждёт активный прогон → `exit 0`; запуск только по расписанию (PM2-рестарт не триггерит)
+- [x] **PIPE-01..03**: `runPipeline(): Promise<RunSummary>` в `src/pipeline.ts`; per-run GramJS клиент с дисконнектом в `finally`; in-memory дедуп `${username}:${messageId}`
+- [x] **RELI-01..03**: `fetchLast24h` распознаёт сетевые сбои (3 попытки exp. backoff 1000/2000/4000 мс); канал помечается skipped, прогон продолжается; reconnect-счётчик отделён от FloodWait
+- [x] **LOG-01..03**: `src/logger.ts` (`[ISO] [level]`); `RunSummary` тип (runId, counters, errors[]); `logRunSummary` многострочным блоком
+- [x] **SCALE-01..02**: `channels.yaml` 50 каналов (12 реальных + 38 PLACEHOLDER); `CHANNEL_DELAY_MS=1750`
+- [x] **DEPLOY-01..02**: `ecosystem.config.cjs` (PM2 fork, `--import tsx`, `kill_timeout=180000`); `node-cron@^3.0.3` + `@types/node-cron@^3.0.11`
+- [x] **DOC-01..03**: README §«Запуск на VPS (PM2)», §«Ежедневный summary-лог», обновлён под daemon-режим
+
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-Milestone v2.0 «Автоматизация + 50 каналов» (REQ-IDs назначаются в `REQUIREMENTS.md`):
+Milestone v3.0 «Structured digest + persistence + Stage 1 acceptance» (REQ-IDs назначаются в `REQUIREMENTS.md`):
 
-- Daemon-режим `npm start` с `node-cron` + mutex + graceful shutdown
-- Выделение `runPipeline()` в `src/pipeline.ts` с возвратом `RunSummary`
-- In-memory дедуп постов `username:messageId` в рамках прогона
-- Graceful reconnect GramJS на сетевых сбоях (3 попытки exp. backoff)
-- Структурированное логирование + summary-лог на прогон
-- Расширение `channels.yaml` до 50 каналов, `CHANNEL_DELAY_MS=1750`
-- PM2 config (`ecosystem.config.js`) для деплоя на VPS
-- Документация: README секция VPS/PM2 и пример summary-лога
+- LLM возвращает строгий JSON по 5 направлениям + блок упоминаний компаний; Zod-валидация + retry x1; drop постов вне 5 категорий
+- Markdown-рендер секциями, deep-link на каждый item, нарезка >4096; пустые категории помечены явно
+- Кросс-прогонная дедупа на SHA-256 от нормализованного текста; `hash-cache.json` rolling 14 дней
+- Архивы на ФС: `data/raw/*.json` + `data/output/*.md` через атомарный `.tmp + rename`
+- Alert-bot (`BOT_TOKEN_ALERTS`/`ALERTS_CHAT_ID`) → личка владельца на любую ошибку pipeline
+- `docs/RUNBOOK.md` (5 сценариев сбоя) + `docs/CHANNELS.md` (lifecycle канала)
+- Acceptance: 7 суток непрерывных сводок + пакет (Приложение №2 + скриншоты + uptime + 3 md-файла)
 
 ### Out of Scope
 
 <!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
 
-- Persistent storage (SQLite/Postgres/pgvector) — MVP проверяет связку, дедуп и история оставлены на следующий milestone
-- Дедупликация постов между запусками и между каналами — допускаем повтор одних и тех же новостей в дайджестах; частично гасится отбором «15 самых содержательных» моделью
-- Классификатор направлений (бункеровка/масла/керосин/нефтехимия/битум) и компаний (TARGET/конкуренты) — темы генерирует сама LLM на каждом прогоне
-- Embeddings (`text-embedding-3-small`) и Redis-кеш — не нужны без дедупа
-- BullMQ/Redis/очереди/DLQ — прогоны одиночные, ретраев на уровне скрипта нет
-- Docker / docker-compose — разовый запуск с ноутбука, docker не окупается
-- Cron / systemd-таймер / GitHub Actions scheduled — запуск руками; когда понадобится расписание, обернём тот же скрипт снаружи
-- Собственный бот-слушатель / webhooks — бот нужен только для `sendMessage`
+- Реляционная/векторная БД (SQLite/Postgres/pgvector) — v3.0 закрывает дедуп и архив на ФС через `hash-cache.json` + `data/raw/*.json` + `data/output/*.md`; БД оправдана только при росте каналов/историй за пределы файлового подхода
+- Семантический dedupe через embeddings (`text-embedding-3-small` + pgvector) — отложен в v4+; v3.0 проверяет лексическую дедупу через SHA-256 от нормализованного текста, embeddings подключим только если лексика даст ложные пропуски
+- Веб-админка для управления каналами — `docs/CHANNELS.md` + `channels.yaml` + ручной деплой PM2 покрывают operator-flow
+- Верификация по официальным источникам (Минэнерго, СПИМЭКС, ФАС) — это v4.0 (Этап 2 договора), не v3.0
+- Подключение к Bitsab и другим ценовым системам — v5.0
+- Дашборды (Grafana/Metabase) — v5.0; v3.0 наблюдается через summary-лог в `pm2 logs` + alert-bot
+- Обучающие материалы (видео, обучение оператора Заказчика) — v7.0, Этап 3 договора
+- Multi-tenancy (несколько TG-сессий/несколько каналов доставки) — один оператор, один потребитель = Заказчик
 - Приватные каналы по `invite hash` — поддерживаем только публичные по `username`
-- Handlebars / внешние шаблонизаторы — inline-рендер строкой достаточен
-- `LLMProvider` / `EmbeddingProvider` / `Deliverer` абстракции — один провайдер, прямой вызов, абстракции появятся когда будет второй кандидат
-- Мульти-аккаунтная ротация TG-сессий — одна сессия, дисциплина запусков
-- Ретраи на уровне прогона при падении DeepSeek/Telegram — выход `exit 1`, перезапуск оператором вручную
-- Dashboard / RAG / сторонние интеграции (Bitsab и пр.) — вне MVP
-- Автотесты — MVP проверяется руками по чек-листу приёмки (§11 spec-app.md)
+- BullMQ/Redis/очереди/DLQ — daemon одиночный, ретраев на уровне процесса нет, повторный шанс — через 24 часа
+- Docker / docker-compose — PM2 + Node-runtime на VPS достаточно; Docker оправдан только при появлении второго сервиса
+- GitHub Actions scheduled / systemd-таймер — `node-cron` внутри daemon уже планирует, вторая схема избыточна
+- `LLMProvider` / `Deliverer` абстракции — один провайдер DeepSeek, одна цель доставки; абстракции появятся при появлении второго кандидата
+- Ретраи на уровне прогона при падении DeepSeek/Telegram (помимо STRUCT-02 retry x1 на невалидной схеме) — daemon ждёт следующий тик в 20:00 MSK; alert-bot уведомляет оператора немедленно
+- Автотесты unit/E2E — v3.0 проверяется ручным smoke-pack + 7-day uptime; CI пока не подключаем
+- Unicode NFC fix в `keyQuote includes()` (IN-01 v1.0 backlog) — не блокирует v3.0; всплывёт при наблюдении ложных drop'ов в STRUCT-валидации
+- chunkHtml edge cases (v1.0 REVIEW warnings) — не задевают новый Markdown-рендер v3.0; v1.0 backlog
 
 ## Context
 
-- **Shipped v1.0**: ~651 LOC TypeScript в 6 модулях (`src/run.ts`, `src/telegram.ts`, `src/summarize.ts`, `src/deliver.ts`, `src/types.ts`, `scripts/login.ts`) + `README.md` + `channels.yaml` + `.env.example`. Три runtime-зависимости (`telegram`, `openai`, `yaml`) — как и планировалось. Timeline: 2026-04-20 → 2026-04-21 (~1 рабочий день, 29 коммитов).
-- **Приёмка v1.0**: все 5 критериев §11 пройдены вручную (OPS-02 approved, VERIFICATION.md passed 26/26). Audit `v1.0-MILESTONE-AUDIT.md` подтвердил 0 gaps, 0 unsatisfied, 0 broken flows; 12 items tech debt (edge cases + doc drift) known-accepted.
-- **Тематика**: российский нефтегаз и нефтехимия (каналы вроде `neftegazru`, `oilfornication`). Промпт DeepSeek настроен на русскоязычную ленту и специфику отрасли (бункеровка, масла, керосин, нефтехимия, битум — возможные будущие направления классификатора).
-- **Пользовательская сессия**: user-аккаунт, чей `TG_SESSION` лежит в `.env`, обязан быть подписан на каждый канал из `channels.yaml` — иначе GramJS бросит `ChannelPrivateError`. Это дисциплина оператора, не код.
-- **Anti-ban дисциплина**: 7 пунктов из §9 spec-app.md реализованы в коде — persistent StringSession, ограниченное окно, последовательность+jitter, FloodWait-обработка с одним retry, правдоподобный клиент (`Desktop/Windows 11/ru`), дисциплина частоты запусков зафиксирована в README.
-- **Known tech debt (v1.0)**: 5 Warnings + 6 Info в `01-REVIEW.md` (chunkHtml edge cases, `.gitignore` неполный glob, NaN env validation, Unicode NFC-чувствительность в `keyQuote` verify, `LOG_LEVEL` задокументирован но не читается) — все known-accepted, кандидаты в backlog v2.
-- **Целевой документ `SPEC.md`** из §13 spec-app.md намеренно игнорируется — это план-мечта на следующий milestone (Postgres+pgvector+дедуп+крон+классификатор), сейчас им не занимаемся.
+- **Shipped v1.0** (2026-04-21): ~651 LOC TypeScript в 6 модулях, 3 runtime-зависимости. Все 26/26 требований MVP-чек-листа §11 пройдены, 0 gaps в `v1.0-MILESTONE-AUDIT.md`. 12 items tech debt known-accepted.
+- **Shipped v2.0** (2026-04-26, code complete + known runtime gap): daemon под PM2 с `node-cron 0 20 * * *` Europe/Moscow, mutex `isRunning`, graceful SIGINT/SIGTERM, reconnect 3x exp.backoff, structured logging + `RunSummary`, расширение до 50 каналов (12 реальных + 38 PLACEHOLDER), `CHANNEL_DELAY_MS=1750`. 20/20 REQ satisfied по коду; HUMAN-UAT smoke не подтверждён оператором — runtime-валидация переезжает в v3.0 ACCEPT-01 (7-day proof). 4-я runtime-dep — `node-cron`. Audit: `milestones/v2.0-MILESTONE-AUDIT.md`, status `gaps_found` (runtime sign-off).
+- **Заказчик**: Роснефть через ИП-посредника. Договор №2020. Этап 1 закрывается v3.0 (275к второго платежа на руках после Акта). Этап 2 — v4.0 (верификация по официальным источникам). Этап 3 — v7.0 (обучение).
+- **Тематика**: российский нефтегаз и нефтехимия, 5 жёстких направлений в v3.0 — бункер/масла/керосин/нефтехимия/битум. Компании-маркеры: Роснефть (TARGET), Лукойл, Газпром (конкуренты).
+- **Пользовательская сессия**: user-аккаунт, чей `TG_SESSION` в `.env`, обязан быть подписан на каждый канал из `channels.yaml`. Дисциплина оператора, не код.
+- **Anti-ban дисциплина**: persistent StringSession, ограниченное 24ч окно, последовательный обход с jitter, FloodWait retry x1, правдоподобный клиент `Desktop/Windows 11/ru`. Частоту прогонов теперь контролирует cron (24ч), а не оператор.
+- **Known tech debt (carried)**:
+  - v1.0 backlog (12 items): chunkHtml edge cases, NaN env validation, Unicode NFC в `keyQuote.includes()`, `.gitignore` глоб, `LOG_LEVEL` задокументирован но не читается
+  - v2.0 backlog (5 items info): `console.warn/error` в `telegram.ts:134-152` (pre-existing), stale comment `ecosystem.config.cjs:1`, double `username:` prefix в `errors[]` (`pipeline.ts:87` ↔ `telegram.ts:166`), README не предупреждает про `npm ci --omit=dev` gotcha с tsx, REQUIREMENTS.md DEPLOY-01/DOC-01 ссылаются на `.js` вместо `.cjs` (override accepted)
+  - v2.0 runtime gap: HUMAN-UAT smoke не пройден; SC1/SC2/SC5 формально не verified до v3.0 ACCEPT-01
+- **`spec-app.md`**: исходный design-doc, базовая часть §7-§9 реализована, §13 (Postgres+pgvector+embeddings) намеренно игнорируется — у Заказчика приоритет на ранжирование/дедуп/acceptance, а не на абстракции под второй сценарий.
 
 ## Constraints
 
-- **Tech stack**: Node.js 20.6+ (нужен `--env-file`), TypeScript без шага сборки (`tsx`), ESM, `moduleResolution: bundler`, `strict: true`. Runtime-зависимости ровно три: `telegram` (GramJS), `openai` (DeepSeek через OpenAI-совместимый SDK), `yaml`.
-- **Нет БД, нет Redis, нет Docker, нет cron** — один процесс, один запуск, без внешней инфры.
-- **Один оператор, один потребитель** — я запускаю, я читаю в закрытом канале. Никакого multi-tenancy.
-- **Telegram API limits**: окно чтения ≤24ч, ≤50 сообщений на канал по умолчанию, задержка между каналами ≥1с + jitter, не чаще одного прогона в 10–15 минут (дисциплина).
-- **DeepSeek**: один батч-запрос на прогон, `response_format: json_object`, модель выбирает не более 15 записей в итоговом дайджесте.
-- **Telegram Bot API**: лимит 4096 символов на сообщение — режем с запасом ~4000 и нумеруем части.
+- **Tech stack**: Node.js 20.6+ (для `--env-file`), TypeScript без шага сборки (`tsx`), ESM, `moduleResolution: bundler`, `strict: true`. Runtime-зависимости: `telegram` (GramJS), `openai` (DeepSeek через OpenAI-совместимый SDK), `yaml`, `node-cron`. v3.0 добавляет `zod` для валидации STRUCT-02 (всего 5 runtime-deps).
+- **Без реляционной/векторной БД** — всё на ФС: `hash-cache.json`, `data/raw/*.json`, `data/output/*.md`, атомарная запись через `.tmp + rename`.
+- **PM2 + node-cron** — единственная схема планирования; daemon крутится на VPS, рестарт через PM2.
+- **Один оператор, один потребитель Заказчика** — никакого multi-tenancy, один TG_SESSION, один канал доставки + один alert-чат для владельца.
+- **Telegram API limits**: окно чтения ≤24ч, ≤50 сообщений на канал по умолчанию, задержка между каналами ≥1.75с + jitter, частоту контролирует `0 20 * * *` крон (1 прогон в сутки).
+- **DeepSeek**: один батч-запрос на прогон, `response_format: json_object`, ответ обязан удовлетворять Zod-схеме v3.0 (5 направлений + блок упоминаний), retry x1 на схема-mismatch.
+- **Telegram Bot API**: лимит 4096 символов — Markdown-рендер режет с запасом и нумерует сегменты.
+- **Без ломки публичного контракта v2.0**: cron в 20:00 MSK, тот же канал доставки, тот же daemon-режим `npm start` под PM2.
+- **Дедлайн**: 2 рабочих дня на код v3.0 + 7-day smoke-acceptance до 22.05.2026 (срок Этапа 1+2 в договоре).
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Ручной запуск, без крона | Нужна самая дешёвая проверка связки GramJS→LLM→Telegram; расписание добавим когда появится стабильный sender | ✓ Good — v1.0 доказал пайплайн на ручных прогонах, cron/scheduler отложен до v2 по-прежнему оправданно |
-| Только MVP, SPEC.md отложен | Все усложнения (Postgres, pgvector, BullMQ, классификатор) окупаются только после подтверждённой ценности дайджеста | ✓ Good — MVP в ~651 LOC за 1 день; SPEC.md-абстракции окупятся только после реального использования v1.0 |
-| GramJS user-session вместо Bot API для чтения | Bot API не видит историю произвольных публичных каналов; user-session с правдоподобными `deviceModel` — единственный рабочий путь | ✓ Good — `Desktop/Windows 11/ru` identity работает, FloodWait на первом прогоне не наблюдался |
-| DeepSeek как единственный LLM | Дешёвый, OpenAI-совместимый SDK, русский язык — подходит; абстракция `LLMProvider` появится когда появится второй провайдер | ✓ Good — `response_format: json_object` сработал, один батч-запрос на прогон достаточен |
-| Экстрактивный промпт с обязательной дословностью `keyQuote` | Защита от галлюцинаций на отраслевой лексике; `keyQuote` проверяется вручную по исходному `text` | ⚠️ Revisit — серверная проверка через `Map<url, Post>` + `includes()` даёт ложные несовпадения при Unicode NFC vs NFD (IN-01 в REVIEW) |
-| Без тестов в MVP | Проверка — ручной чек-лист из 5 критериев §11; 1 оператор, 1 прогон в день, автоматизация тестов окупится на следующем milestone | ✓ Good — §11 приёмка пройдена вручную без провалов; автотесты — кандидат в v2 если появится CI |
-| Без персистентности между запусками | Повтор одних и тех же новостей допустим; дедуп требует БД и эмбеддингов, что выходит за MVP | — Pending — реальная частота повторов в дайджестах оценится только после нескольких дней эксплуатации |
-| YOLO-режим GSD с одной фазой вместо 3–5 | Пользователь явно запросил «сильно меньше чем coarse»; пайплайн GramJS→DeepSeek→Bot API не даёт верифицируемой ценности в подмножествах | ✓ Good — все 26 требований прошли 3-source cross-reference (VERIFICATION + SUMMARY + REQUIREMENTS) без orphans |
+| Ручной запуск, без крона (v1.0) | Самая дешёвая проверка связки GramJS→LLM→Telegram; расписание добавим когда появится стабильный sender | ✓ Superseded — v2.0 перевёл в daemon-режим под PM2 + node-cron `'0 20 * * *'` Europe/Moscow |
+| Только MVP, SPEC.md отложен (v1.0) | Все усложнения окупаются только после подтверждённой ценности дайджеста | ✓ Superseded — v3.0 берёт критическую часть SPEC.md (структурированный JSON, дедуп, архивы), но всё ещё без БД |
+| GramJS user-session вместо Bot API для чтения | Bot API не видит историю произвольных публичных каналов | ✓ Good (carried v1.0+v2.0) — identity `Desktop/Windows 11/ru` работает, FloodWait на 50 каналах с CHANNEL_DELAY_MS=1750 ещё не наблюдался |
+| DeepSeek как единственный LLM | Дешёвый, OpenAI-совместимый SDK, русский язык подходит | ✓ Good — `response_format: json_object` сработал в v1.0; v3.0 добавляет Zod-валидацию + retry x1 на схема-mismatch |
+| Экстрактивный промпт с обязательной дословностью `keyQuote` | Защита от галлюцинаций на отраслевой лексике | ⚠️ Revisit — `Map<url, Post>` + `includes()` даёт ложные несовпадения при Unicode NFC vs NFD (IN-01 backlog); v3.0 STRUCT-валидация + drop постов вне категорий частично снижает риск |
+| Без тестов | Ручной чек-лист §11 + summary-лог + alert-bot | ✓ Carried v1.0→v2.0→v3.0 — v3.0 добавляет 7-day acceptance proof; CI откладывается до появления второго инженера |
+| Без персистентности между запусками (v1.0) | Повтор одних и тех же новостей допустим в MVP | ✓ Closed — Заказчик в Этапе 1 явно требует дедуп; v3.0 закрывает через SHA-256 hash-cache.json (rolling 14 дней) |
+| YOLO-режим с одной фазой (v1.0+v2.0) | Пайплайн не даёт верифицируемой ценности в подмножествах | ✓ Good v1.0/v2.0; v3.0 — TBD по итогам roadmap-фазы (4 wave-группы STRUCT/RENDER → DEDUP/ARCH → ALERT/DOC → ACCEPT могут стать одной или несколькими фазами) |
+| Дедуп на ФС через SHA-256, не embeddings (v3.0) | Файловый hash-cache достаточен для лексических повторов; embeddings + pgvector — отдельный milestone v4+ | — Pending — реальное качество дедупы оценится по 7-day smoke; ложные пропуски/задвоения сигналят к семантическому подходу |
+| Архивы на ФС (raw + output), не в БД (v3.0) | Атомарный `.tmp + rename` достаточен для одного оператора и acceptance-пакета; БД оправдана только при росте каналов/историй | — Pending — после 7 суток оценить размер директории `data/` и решить про ротацию/архивацию |
+| Alert-bot отдельным `BOT_TOKEN_ALERTS` (v3.0) | Не загрязнять канал Заказчика тех-ошибками; алерты в личку владельца — изолированный канал реагирования | — Pending — выяснится по частоте срабатываний на 7-day smoke (адекватный сигнал vs шум) |
 
 ## Evolution
 
@@ -132,4 +152,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-22 — milestone v2.0 «Автоматизация + 50 каналов» started*
+*Last updated: 2026-04-26 — milestone v3.0 «Structured digest + persistence + Stage 1 acceptance» started; v2.0 archived as code-complete + known runtime gap (carried into v3.0 ACCEPT-01)*
