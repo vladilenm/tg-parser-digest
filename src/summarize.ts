@@ -70,51 +70,55 @@ function formatDateRu(iso: string): string {
 }
 
 // ============================================================================
-// Серверная проверка keyQuote (D-01..D-05) + маппинг item→post по url (D-03).
-// Возвращает новый DigestJson только с валидными items; удаляет пустые секции.
-// Побочный эффект: console.warn на каждое нарушение (D-04, D-05).
+// Серверная проверка keyQuote (Core Value v3.0) + маппинг item→post по url.
+// Возвращает новый DigestJson только с валидными items + счётчик отброшенных.
+// Побочный эффект: console.warn на каждое нарушение.
+// STRUCT-03: droppedCount будет учтён в RunSummary.postsDropped.
 // ============================================================================
-function verifyExtractiveness(digest: DigestJson, posts: Post[]): DigestJson {
-  // D-03: Map<url, Post>. Ключ — url поста, полученный в src/telegram.ts.
+function verifyExtractiveness(
+  digest: DigestJson,
+  posts: Post[]
+): { digest: DigestJson; droppedCount: number } {
   const byUrl = new Map<string, Post>();
   for (const p of posts) byUrl.set(p.url, p);
+  let droppedCount = 0;
 
-  const cleanedSections: DigestSection[] = [];
-  for (const section of digest.sections) {
-    const validItems: DigestItem[] = [];
-    for (const item of section.items) {
+  const filterArr = (items: DigestItem[]): DigestItem[] => {
+    const out: DigestItem[] = [];
+    for (const item of items) {
       const post = byUrl.get(item.url);
       if (!post) {
-        // D-03: url не совпал ни с одним собранным постом — skip.
+        droppedCount++;
         console.warn(
-          `[summarize] skip (url not in source): channel=${item.channel} url=${item.url} keyQuote="${item.keyQuote.slice(0, 60)}"`
+          `[summarize] skip (url not in source): channel=${item.channel} url=${item.url}`
         );
         continue;
       }
-      // D-02: sourceText.includes(keyQuote.trim()) — строго + trim по краям.
       const needle = item.keyQuote.trim();
       if (!post.text.includes(needle)) {
-        // D-04: skip + warn с channel, messageId, keyQuote, 60-char сниппет text.
+        droppedCount++;
         const snippet = post.text.slice(0, 60).replace(/\n/g, " ");
         console.warn(
           `[summarize] skip (keyQuote not in source): channel=${post.channelUsername} messageId=${post.messageId} keyQuote="${needle}" textSnippet="${snippet}"`
         );
         continue;
       }
-      validItems.push({
-        summary: item.summary,
-        keyQuote: item.keyQuote,
-        url: item.url,
-        channel: item.channel,
-      });
+      out.push(item);
     }
-    if (validItems.length > 0) {
-      cleanedSections.push({ title: section.title, items: validItems });
-    }
-  }
+    return out;
+  };
+
   return {
-    generatedAt: digest.generatedAt,
-    sections: cleanedSections,
+    digest: {
+      generatedAt: digest.generatedAt,
+      bunker:    filterArr(digest.bunker),
+      oil:       filterArr(digest.oil),
+      kerosene:  filterArr(digest.kerosene),
+      petrochem: filterArr(digest.petrochem),
+      bitumen:   filterArr(digest.bitumen),
+      mentions:  filterArr(digest.mentions),
+    },
+    droppedCount,
   };
 }
 
@@ -163,9 +167,11 @@ export function renderHtml(digest: DigestJson, posts: Post[]): string {
 }
 
 // ============================================================================
-// summarize(posts) — главная функция модуля (SUM-01, SUM-02, SUM-03, SUM-04).
+// summarize(posts) — главная функция модуля v3.0 (STRUCT-01..03).
+// Возвращает {html, postsDropped} — postsDropped попадёт в RunSummary.
+// На невалидной схеме делает retry x1; повторный fail → throw (поднимется до ALERT-02).
 // ============================================================================
-export async function summarize(posts: Post[]): Promise<string> {
+export async function summarize(posts: Post[]): Promise<{ html: string; postsDropped: number }> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY не задан.");
@@ -175,34 +181,50 @@ export async function summarize(posts: Post[]): Promise<string> {
 
   const client = new OpenAI({ apiKey, baseURL });
 
-  // SUM-01: один батч-запрос, response_format: json_object.
-  const completion = await client.chat.completions.create({
-    model,
-    response_format: { type: "json_object" },
-    messages: [
+  // Helper: один запрос к DeepSeek с произвольным набором system-сообщений.
+  const ask = async (extraSystem?: string): Promise<unknown> => {
+    const messages: Array<{ role: "system" | "user"; content: string }> = [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: JSON.stringify({ posts }) },
-    ],
-  });
+    ];
+    if (extraSystem) {
+      messages.push({ role: "system", content: extraSystem });
+    }
+    messages.push({ role: "user", content: JSON.stringify({ posts }) });
+    const completion = await client.chat.completions.create({
+      model,
+      response_format: { type: "json_object" },
+      messages,
+    });
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      console.error("[summarize] DeepSeek вернул невалидный JSON. Raw (first 500 chars):");
+      console.error(raw.slice(0, 500));
+      throw new Error(`Invalid JSON from DeepSeek: ${(err as Error).message}`);
+    }
+  };
 
-  const raw = completion.choices[0]?.message?.content ?? "{}";
-
-  // SUM-03: парсинг + ручная валидация; ошибка → пробрасываем наверх (src/run.ts сделает exit 1).
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    console.error("[summarize] DeepSeek вернул невалидный JSON. Raw (first 500 chars):");
-    console.error(raw.slice(0, 500));
-    throw new Error(`Invalid JSON from DeepSeek: ${(err as Error).message}`);
+  // STRUCT-02: первый запрос → safeParse; на fail → retry x1.
+  let parsed = await ask();
+  let result = DigestJsonSchema.safeParse(parsed);
+  if (!result.success) {
+    console.warn(
+      `[summarize] первая попытка не прошла Zod-валидацию: ${JSON.stringify(result.error.issues).slice(0, 300)} — повтор`
+    );
+    parsed = await ask(
+      "Предыдущий ответ не прошёл схема-валидацию. Верни СТРОГИЙ JSON ровно по структуре, описанной в первой системной инструкции, без markdown."
+    );
+    result = DigestJsonSchema.safeParse(parsed);
+    if (!result.success) {
+      throw new Error(
+        "DeepSeek schema mismatch after retry: " + JSON.stringify(result.error.issues).slice(0, 500)
+      );
+    }
   }
-  validate(parsed);
 
-  // D-01..D-05: серверная верификация дословности keyQuote.
-  const verified = verifyExtractiveness(parsed, posts);
-
-  // Если после верификации не осталось ни одной записи — дайджест пустой,
-  // но рендерим шапку (оператор увидит "N постов из K каналов за 24ч",
-  // но ни одной темы). Это валидный сценарий (LLM всё прогнал, всё отсеялось).
-  return renderHtml(verified, posts);
+  // STRUCT-03 + Core Value: серверная верификация дословности keyQuote.
+  const { digest, droppedCount } = verifyExtractiveness(result.data, posts);
+  const html = renderHtml(digest, posts);
+  return { html, postsDropped: droppedCount };
 }
