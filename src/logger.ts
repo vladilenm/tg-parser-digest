@@ -30,7 +30,7 @@ export function logRunSummary(s: RunSummary): void {
     `[${s.finishedAt}] [summary] runId=${s.runId}`,
     `  duration=${dur}s`,
     `  channels: total=${s.channelsTotal} succeeded=${s.channelsSucceeded} skipped=${s.channelsSkipped}`,
-    `  posts: collected=${s.postsCollected} deduped=${s.postsDeduped}`,
+    `  posts: collected=${s.postsCollected} deduped=${s.postsDeduped} dropped=${s.postsDropped}`,
     `  delivered=${s.digestDelivered}`,
   ];
   if (s.errors.length > 0) {
