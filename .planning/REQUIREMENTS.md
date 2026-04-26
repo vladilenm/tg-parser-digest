@@ -114,44 +114,43 @@
 
 ## Traceability
 
-Соответствие требований фазам. Заполняется `gsd-roadmapper`-агентом при создании ROADMAP.md.
+Соответствие требований фазам. Заполнено `gsd-roadmapper`-агентом 2026-04-26.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STRUCT-01 | Phase TBD | Pending |
-| STRUCT-02 | Phase TBD | Pending |
-| STRUCT-03 | Phase TBD | Pending |
-| RENDER-01 | Phase TBD | Pending |
-| RENDER-02 | Phase TBD | Pending |
-| RENDER-03 | Phase TBD | Pending |
-| DEDUP-01 | Phase TBD | Pending |
-| DEDUP-02 | Phase TBD | Pending |
-| ARCH-01 | Phase TBD | Pending |
-| ARCH-02 | Phase TBD | Pending |
-| ALERT-01 | Phase TBD | Pending |
-| ALERT-02 | Phase TBD | Pending |
-| DOC-04 | Phase TBD | Pending |
-| DOC-05 | Phase TBD | Pending |
-| ACCEPT-01 | Phase TBD | Pending |
-| ACCEPT-02 | Phase TBD | Pending |
+| STRUCT-01 | Phase 1 | Pending |
+| STRUCT-02 | Phase 1 | Pending |
+| STRUCT-03 | Phase 1 | Pending |
+| RENDER-01 | Phase 1 | Pending |
+| RENDER-02 | Phase 1 | Pending |
+| RENDER-03 | Phase 1 | Pending |
+| DEDUP-01 | Phase 1 | Pending |
+| DEDUP-02 | Phase 1 | Pending |
+| ARCH-01 | Phase 1 | Pending |
+| ARCH-02 | Phase 1 | Pending |
+| ALERT-01 | Phase 1 | Pending |
+| ALERT-02 | Phase 1 | Pending |
+| DOC-04 | Phase 1 | Pending |
+| DOC-05 | Phase 1 | Pending |
+| ACCEPT-01 | Phase 2 | Pending |
+| ACCEPT-02 | Phase 2 | Pending |
 
 **Coverage:**
 - v3.0 requirements: 16 total
-- Mapped to phases: 0 (pending roadmapper)
-- Unmapped: 16 ⚠️ — будут смаплены `gsd-roadmapper` при создании ROADMAP.md
+- Mapped to phases: 16 (Phase 1: 14, Phase 2: 2)
+- Unmapped: 0 — coverage complete
 
 ## Suggested wave structure (from intent-v3.0.md)
 
-Подсказка для `gsd-roadmapper` — оператор предложил такую структуру в `docs/intent-v3.0.md`:
+Подсказка для `gsd-roadmapper` — оператор предложил такую структуру в `docs/intent-v3.0.md`.
+Roadmapper решил: одна YOLO-фаза кода (Phase 1) с 4 wave-группами как порядком планов + отдельный ACCEPT-checkpoint (Phase 2).
 
 - **Wave 1 (parallel):** STRUCT-01..03, RENDER-01..03 — критическая ценность для Заказчика, ранжированный дайджест с deep-link
 - **Wave 2 (parallel):** DEDUP-01..02, ARCH-01..02 — техническая зрелость, файловое состояние + дедуп
 - **Wave 3 (parallel):** ALERT-01..02, DOC-04..05 — наблюдаемость + оперативная документация
-- **Wave 4 (checkpoint):** ACCEPT-01..02 — 7-day smoke + сборка пакета приёмки (блокирующий human-checkpoint)
-
-Roadmapper решает: одна YOLO-фаза с 4 wave-группами (по образцу v2.0) или 4 атомарных фазы. ACCEPT-* почти наверняка отдельная фаза-checkpoint после кода.
+- **Wave 4 (checkpoint):** ACCEPT-01..02 — 7-day smoke + сборка пакета приёмки (Phase 2, blocking human-checkpoint)
 
 ---
 *Requirements defined: 2026-04-26*
 *Source: docs/intent-v3.0.md (утверждено оператором 2026-04-26)*
-*Traceability pending: ждёт gsd-roadmapper*
+*Traceability completed: 2026-04-26 by gsd-roadmapper (16/16 mapped)*
