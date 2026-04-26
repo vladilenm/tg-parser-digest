@@ -8,6 +8,8 @@ import { createClient, fetchLast24h, sleep, randomInt } from "./telegram.js";
 import { summarize } from "./summarize.js";
 import { sendToChannel } from "./deliver.js";
 import { log } from "./logger.js";
+import { writeRaw, writeOutput } from "./archive.js";
+import { dedupAgainstCache, commitHashCache } from "./dedup.js";
 
 interface ChannelEntry {
   username: string;
@@ -63,6 +65,7 @@ export async function runPipeline(): Promise<RunSummary> {
   let channelsSucceeded = 0;
   let channelsSkipped = 0;
   let postsDeduped = 0;
+  let postsDropped = 0;
   const errors: string[] = [];
 
   try {
@@ -99,12 +102,35 @@ export async function runPipeline(): Promise<RunSummary> {
     `[pipeline] собрано уникальных: ${allPosts.length}, дублей отброшено: ${postsDeduped}`
   );
 
+  // ARCH-01 (D-09 step 2): пишем raw СРАЗУ после fetch, до dedup и LLM.
+  // Инвариант: «сырые данные за день сохранены, даже если остаток pipeline упал».
+  writeRaw(allPosts, runId);
+
   let digestDelivered = false;
   if (allPosts.length > 0) {
-    const html = await summarize(allPosts);
-    await sendToChannel(html);
-    digestDelivered = true;
-    log.info(`[pipeline] дайджест отправлен.`);
+    // DEDUP-01..02 (D-09 step 3-4): фильтруем allPosts через rolling hash-cache.
+    const { fresh: freshPosts, hits: hashHits, freshHashes } = dedupAgainstCache(allPosts, runId);
+    postsDeduped += hashHits;
+
+    if (freshPosts.length === 0) {
+      log.info("[pipeline] all posts dedup'ed by hash-cache — skipping digest");
+    } else {
+      // STRUCT-01..03 (D-09 step 5): summarize возвращает {html, postsDropped}.
+      const { html, postsDropped: dropped } = await summarize(freshPosts);
+      postsDropped = dropped;
+
+      // RENDER-01..03 (D-09 step 7): доставка в Telegram.
+      await sendToChannel(html);
+      digestDelivered = true;
+      log.info(`[pipeline] дайджест отправлен.`);
+
+      // ARCH-02 (D-09 step 8): сохраняем output ТОЛЬКО после успешной доставки,
+      //   байт-в-байт identical с отправленным.
+      writeOutput(html, runId);
+
+      // DEDUP-02 (D-09 step 8): hash-cache «съедает» только реально доставленные.
+      commitHashCache(freshHashes, runId);
+    }
   } else {
     log.info("[pipeline] No posts in window — skipping digest");
   }
@@ -120,6 +146,7 @@ export async function runPipeline(): Promise<RunSummary> {
     channelsSkipped,
     postsCollected: allPosts.length,
     postsDeduped,
+    postsDropped,
     digestDelivered,
     errors,
   };
