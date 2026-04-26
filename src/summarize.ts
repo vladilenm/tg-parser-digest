@@ -1,33 +1,49 @@
 // src/summarize.ts — DeepSeek-суммаризация + серверная проверка дословности keyQuote + HTML-рендер.
 
 import OpenAI from "openai";
-import type { Post, DigestJson, DigestItem, DigestSection } from "./types.js";
+import type { Post, DigestJson, DigestItem, Category, Mention } from "./types.js";
+import { DigestJsonSchema } from "./schema.js";
 
 // ============================================================================
-// SYSTEM_PROMPT — §8 spec-app.md. Экстрактивность обязательна; keyQuote ДОЛЖЕН быть
-// дословной подстрокой text. Серверная проверка (D-01) — финальный барьер, а не этот промпт.
+// SYSTEM_PROMPT v3.0 — STRUCT-01..03. Экстрактивность обязательна; keyQuote ДОЛЖЕН быть
+// дословной подстрокой text. Серверная проверка — финальный барьер, а не этот промпт.
+// 5 фиксированных категорий + блок mentions (orphans only, D-04).
 // ============================================================================
 const SYSTEM_PROMPT = [
-  "Ты — экстрактивный редактор русскоязычной ленты. На вход получаешь JSON { posts: [...] },",
-  "где posts[i] = { channelUsername, postedAt, text, url }.",
+  "Ты — экстрактивный редактор русскоязычной ленты по нефтегазу/нефтехимии РФ.",
+  "На вход получаешь JSON { posts: [...] }, где posts[i] = { channelUsername, postedAt, text, url }.",
+  "",
+  "Твоя задача — вернуть СТРОГИЙ JSON по 5 фиксированным категориям + блок mentions.",
+  "",
+  "Категории (ровно эти 5 ключей):",
+  "  - bunker     — судовое топливо, мазут, бункеровка, морские порты",
+  "  - oil        — масла моторные/индустриальные, смазочные материалы",
+  "  - kerosene   — авиакеросин, jet fuel, авиатопливо",
+  "  - petrochem  — нефтехимия (этилен, пропилен, полимеры, нефтехимические продукты)",
+  "  - bitumen    — битум, дорожно-строительные нефтепродукты",
+  "",
+  "Компании-маркеры (ровно эти 3 значения):",
+  "  - rosneft, lukoil, gazprom",
   "",
   "Жёсткие правила:",
   "1) Пиши ТОЛЬКО по фактам из text. Никаких домыслов, чисел или имён, отсутствующих в исходнике.",
-  "2) keyQuote каждой записи ДОЛЖЕН быть дословной подстрокой text (для верификации).",
+  "2) keyQuote каждой записи ДОЛЖЕН быть дословной подстрокой text (для серверной верификации).",
   "3) summary — 1–2 предложения на русском, до 250 символов.",
-  "4) Отбирай не более 15 самых содержательных постов в сумме по всем каналам.",
-  "5) Группировку по темам придумай сам — 3–6 групп, короткие заголовки.",
-  "6) Возвращай строго JSON без markdown и комментариев:",
+  "4) Каждый item имеет mentions: [...] — список упомянутых в text компаний из {rosneft,lukoil,gazprom}, может быть пустым.",
+  "5) Если пост попадает в одну из 5 категорий — клади его в соответствующий массив (bunker/oil/kerosene/petrochem/bitumen) с category равной этому ключу. Mentions заполняй параллельно.",
+  "6) Если пост НЕ попадает ни в одну из 5 категорий, но содержит хотя бы одну из 3 компаний — клади его в массив mentions с category=null и непустым mentions[]. Это «orphan-mention».",
+  "7) Если пост НЕ попадает в категорию И не упоминает ни одной из 3 компаний — отбрасывай (не возвращай нигде).",
+  "8) Один пост попадает РОВНО в один массив (либо в категорию, либо в orphan-mention), не в оба.",
+  "9) Отбирай не более 15 самых содержательных постов в сумме по всем массивам.",
+  "10) Возвращай строго JSON без markdown и комментариев следующего вида:",
   "{",
   '  "generatedAt": "ISO8601",',
-  '  "sections": [',
-  "    {",
-  '      "title": "Короткий заголовок темы",',
-  '      "items": [',
-  '        { "summary": "...", "keyQuote": "...", "url": "https://t.me/...", "channel": "username" }',
-  "      ]",
-  "    }",
-  "  ]",
+  '  "bunker":    [ { "category":"bunker",    "summary":"...", "keyQuote":"...", "url":"...", "channel":"...", "mentions":["rosneft"] } ],',
+  '  "oil":       [],',
+  '  "kerosene":  [],',
+  '  "petrochem": [],',
+  '  "bitumen":   [],',
+  '  "mentions":  [ { "category":null, "summary":"...", "keyQuote":"...", "url":"...", "channel":"...", "mentions":["lukoil"] } ]',
   "}",
 ].join("\n");
 
@@ -51,46 +67,6 @@ function formatDateRu(iso: string): string {
     month: "short",
     year: "numeric",
   }).format(d);
-}
-
-// ============================================================================
-// Валидация структуры JSON-ответа (SUM-03): ручной typeof/Array.isArray, без zod.
-// Бросает Error при структурных нарушениях (тогда src/run.ts упадёт с exit 1).
-// ============================================================================
-function validate(x: unknown): asserts x is DigestJson {
-  if (typeof x !== "object" || x === null) {
-    throw new Error("DeepSeek response: not an object");
-  }
-  const obj = x as Record<string, unknown>;
-  if (typeof obj.generatedAt !== "string") {
-    throw new Error("DeepSeek response: generatedAt must be string");
-  }
-  if (!Array.isArray(obj.sections)) {
-    throw new Error("DeepSeek response: sections must be array");
-  }
-  for (const section of obj.sections) {
-    if (typeof section !== "object" || section === null) {
-      throw new Error("DeepSeek response: section must be object");
-    }
-    const s = section as Record<string, unknown>;
-    if (typeof s.title !== "string" || !s.title) {
-      throw new Error("DeepSeek response: section.title must be non-empty string");
-    }
-    if (!Array.isArray(s.items)) {
-      throw new Error("DeepSeek response: section.items must be array");
-    }
-    for (const item of s.items) {
-      if (typeof item !== "object" || item === null) {
-        throw new Error("DeepSeek response: item must be object");
-      }
-      const it = item as Record<string, unknown>;
-      for (const field of ["summary", "keyQuote", "url", "channel"] as const) {
-        if (typeof it[field] !== "string" || !it[field]) {
-          throw new Error(`DeepSeek response: item.${field} must be non-empty string`);
-        }
-      }
-    }
-  }
 }
 
 // ============================================================================
