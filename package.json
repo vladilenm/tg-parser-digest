@@ -8,7 +8,8 @@
   },
   "scripts": {
     "login": "node --env-file=.env --import tsx scripts/login.ts",
-    "start": "node --env-file=.env --import tsx src/run.ts"
+    "start": "node --env-file=.env --import tsx src/run.ts",
+    "start:once": "node --env-file=.env --import tsx scripts/run-once.ts"
   },
   "dependencies": {
     "node-cron": "^3.0.3",
