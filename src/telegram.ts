@@ -145,6 +145,14 @@ export async function fetchLast24h(
       // второй счётчик (сетевой) не читается и не инкрементируется здесь.
       if (err instanceof FloodWaitError || name === "FloodWaitError") {
         const seconds = (err as unknown as { seconds?: number }).seconds ?? 30;
+        // ANTIBAN: hard-cap. Длинный FloodWait (>5 мин) — сигнал что Telegram уже сердится;
+        // лучше пропустить канал и поднять алерт, чем спать 10+ минут и продолжать.
+        if (seconds > 300) {
+          console.error(
+            `[telegram] FloodWait too long on ${username} (${seconds}s) — aborting without retry.`
+          );
+          throw err;
+        }
         if (floodRetried) {
           console.error(`[telegram] second FloodWait on ${username}, aborting (${seconds}s).`);
           throw err;

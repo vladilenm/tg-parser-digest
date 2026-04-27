@@ -52,8 +52,15 @@ export async function runPipeline(): Promise<RunSummary> {
   const channels = loadChannelsYaml("./channels.yaml");
   const limit = Number(process.env.MAX_MESSAGES_PER_CHANNEL ?? 50);
   const windowHours = Number(process.env.FETCH_WINDOW_HOURS ?? 24);
-  // SCALE-02: дефолт 1750 мс согласован с .env.example.
-  const channelDelayMs = Number(process.env.CHANNEL_DELAY_MS ?? 1750);
+  // ANTIBAN: 1500 мс база + jitter 0–2500 мс = 1.5–4 сек разброс между каналами.
+  const channelDelayMs = Number(process.env.CHANNEL_DELAY_MS ?? 1500);
+
+  // ANTIBAN: Fisher-Yates shuffle — порядок каналов меняется каждый прогон,
+  // чтобы не светить одну и ту же последовательность username-ов изо дня в день.
+  for (let i = channels.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [channels[i], channels[j]] = [channels[j]!, channels[i]!];
+  }
 
   log.info(`[pipeline] runId=${runId} channels=${channels.length}`);
 
@@ -91,7 +98,8 @@ export async function runPipeline(): Promise<RunSummary> {
         log.warn(`[pipeline] channel skipped: ${username} — ${msg}`);
       }
       if (i < channels.length - 1) {
-        await sleep(channelDelayMs + randomInt(0, 500));
+        // ANTIBAN: широкий jitter (0–2500 мс) — убираем равномерный rate-pattern.
+        await sleep(channelDelayMs + randomInt(0, 2500));
       }
     }
   } finally {

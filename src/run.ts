@@ -1,5 +1,5 @@
 // src/run.ts — daemon entrypoint tg-parser-demo (v2.0).
-// Запуск: `npm start` — процесс висит, cron триггерит tick() каждые сутки в 20:00 MSK.
+// Запуск: `npm start` — процесс висит, cron триггерит tick() каждые сутки в 20:15 MSK + 0–30min jitter.
 // Остановка: Ctrl+C (SIGINT) или SIGTERM от PM2 — graceful shutdown с ожиданием активного прогона.
 
 import cron from "node-cron";
@@ -17,6 +17,10 @@ async function tick(): Promise<void> {
   }
   isRunning = true;
   try {
+    // ANTIBAN: рандомная пауза 0–30 минут перед прогоном, чтобы убрать детерминированную сигнатуру "ровно 20:15".
+    const jitterMs = Math.floor(Math.random() * 30 * 60 * 1000);
+    log.info(`[tick] schedule jitter: sleeping ${(jitterMs / 1000).toFixed(0)}s before run`);
+    await new Promise((r) => setTimeout(r, jitterMs));
     const summary = await runPipeline();
     logRunSummary(summary);
   } catch (err) {
@@ -42,11 +46,11 @@ async function tick(): Promise<void> {
   }
 }
 
-// DAEMON-02: ежедневный прогон в 20:00 MSK.
+// DAEMON-02: ежедневный прогон в 20:15 MSK + рандомный jitter 0–30 минут (см. tick).
 // DAEMON-04: опция auto-fire-on-start НЕ передаётся — PM2-рестарт не триггерит
-// дайджест вне расписания, прогон идёт только по cron-времени 20:00 MSK.
-const task = cron.schedule("0 20 * * *", tick, { timezone: "Europe/Moscow" });
-log.info("daemon started, schedule: 0 20 * * * Europe/Moscow");
+// дайджест вне расписания, прогон идёт только по cron-времени.
+const task = cron.schedule("15 20 * * *", tick, { timezone: "Europe/Moscow" });
+log.info("daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter");
 
 // DAEMON-01: graceful shutdown — ждём активный прогон, потом exit 0.
 const shutdown = async (signal: string): Promise<void> => {
