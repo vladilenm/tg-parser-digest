@@ -1,0 +1,45 @@
+# Зависимости и артефакты
+node_modules
+dist
+build
+*.tsbuildinfo
+
+# Секреты — НИКОГДА не должны попасть в образ
+.env
+.env.local
+.env.example
+
+# Рантайм-данные (приходят через volume)
+data
+
+# Git и CI
+.git
+.gitignore
+.gitattributes
+
+# Планирование, документация, спецификации (не нужны рантайму)
+.planning
+docs
+package
+spec-app.md
+
+# Альтернативные пути запуска (не нужны в Docker-образе)
+ecosystem.config.cjs
+
+# Login-скрипт — генерируется локально, в контейнере не запускается
+scripts/login.ts
+
+# Prod-список каналов (если есть локально) — оператор подключает через volume/UI
+prod-channels.yaml
+
+# Логи
+*.log
+
+# IDE/OS
+.DS_Store
+.vscode
+.idea
+
+# Markdown проекта (README/CLAUDE достаточно git-репо, в образ не нужны)
+README.md
+CLAUDE.md

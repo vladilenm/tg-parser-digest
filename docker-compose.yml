@@ -1,0 +1,22 @@
+services:
+  tg-parser:
+    build: .
+    image: tg-parser-demo:latest
+    container_name: tg-parser-demo
+    restart: unless-stopped
+    # init: true КРИТИЧНО — без него Node как PID 1 не получает SIGTERM правильно,
+    # graceful shutdown в src/run.ts:55-65 (ожидание активного прогона перед exit 0) ломается.
+    init: true
+    # На Timeweb env приходит через UI, локально — из ./env. Файл .env НЕ попадает в образ
+    # (см. .dockerignore), сюда он подключается рантаймом через env_file.
+    # required: false — без него Compose v2 падает, если .env отсутствует (на Timeweb env идёт из UI,
+    # .env на проде нет → required: true сломал бы деплой).
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: Europe/Moscow
+    volumes:
+      # Persistent storage для data/raw, data/output, data/dedup-cache.
+      # На Timeweb пользователь подключит volume через UI; локально — bind mount.
+      - ./data:/app/data
