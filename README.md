@@ -117,6 +117,57 @@ User-аккаунт, чей `TG_SESSION` лежит в `.env`, **должен б
 - `max_restarts: 10` + `min_uptime: "30s"` — защита от флап-рестартов (если daemon падает в первые 30с, PM2 сдаётся после 10 попыток).
 - `max_memory_restart: "300M"` — рестарт при утечке памяти.
 
+## Деплой через Docker / Timeweb Cloud Apps
+
+Альтернатива PM2-пути для тех, кто хочет управляемый деплой без ручной настройки VPS. Подход: маркетплейс **Timeweb Cloud Apps** → тип "Docker Compose Latest" → подключение GitHub-репо → авто-деплой по `git push`. Образ собирается из `Dockerfile` в корне репо, оркестрация — через `docker-compose.yml`.
+
+PM2-путь (`ecosystem.config.cjs`) остаётся рабочим — выбирай тот, который удобнее.
+
+### Шаг 1. Сгенерировать `TG_SESSION` локально
+
+`npm run login` — интерактивный скрипт, запрашивает телефон, код из Telegram, 2FA-пароль. **Не запускай его в контейнере** — у образа нет stdin, и login-скрипт исключён из build context (см. `.dockerignore`).
+
+После успеха скопируй строку StringSession — она понадобится в Шаге 2.
+
+### Шаг 2. Создать App в Timeweb Cloud Apps
+
+1. Войти в Timeweb Cloud → Apps → создать приложение → выбрать **Docker Compose Latest** в маркетплейсе.
+2. Подключить GitHub-репо (`tg-parser-demo`), ветку `main`. Timeweb сам найдёт `docker-compose.yml` в корне.
+3. Задать env-переменные через UI (Timeweb передаёт их в контейнер, `.env` файл НЕ нужен на проде):
+   - **Обязательные:** `TG_API_ID`, `TG_API_HASH`, `TG_SESSION` (из Шага 1), `TG_BOT_TOKEN`, `TG_CHANNEL_ID`, `DEEPSEEK_API_KEY`, `BOT_TOKEN_ALERTS`, `ALERTS_CHAT_ID`.
+   - **Опциональные** (значения по умолчанию подходят, см. `.env.example`): `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `FETCH_WINDOW_HOURS`, `MAX_MESSAGES_PER_CHANNEL`, `CHANNEL_DELAY_MS`, `LOG_LEVEL`.
+
+После сохранения Timeweb автоматически собирает образ и запускает контейнер. Каждый последующий `git push` в `main` триггерит ребилд и редеплой.
+
+### Шаг 3. Подключить persistent volume на `/app/data` (опционально, рекомендуется)
+
+В Timeweb UI добавь volume на mount-point `/app/data`. Без volume каждый редеплой обнуляет:
+- `data/raw/YYYY-MM-DD.json` — сырые посты до dedup и LLM (нужны для аудита).
+- `data/output/YYYY-MM-DD.md` — отправленный HTML-дайджест (байт-в-байт).
+- `data/dedup-cache/` — hash-кэш для DEDUP-логики (без него возможны повторы постов в первый день после редеплоя).
+
+### Шаг 4. Локальное тестирование Docker-стека
+
+Перед пушом в Timeweb можно проверить локально:
+
+    docker compose up --build
+
+Поведение должно быть идентично `npm start`: процесс висит, лог `daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter`, в 20:15 MSK (с jitter 0–30 мин) запускается tick. Остановка — `Ctrl+C` → graceful shutdown (благодаря `init: true` в `docker-compose.yml`, иначе SIGTERM не дойдёт до Node как PID 1).
+
+Однократный прогон без ожидания cron:
+
+    docker compose run --rm tg-parser node --import tsx scripts/run-once.ts
+
+### Замечание про identity Telegram-аккаунта
+
+При первом подключении `TG_SESSION` из Timeweb-IP (датацентр в РФ) Telegram пришлёт user-аккаунту уведомление **«Новый вход»**. Это нормально — `CLIENT_IDENTITY` в `src/telegram.ts` ту же. Просто подтверди вход в личном Telegram-клиенте и продолжи. Повторных уведомлений при каждом редеплое не будет (session тот же).
+
+### Что НЕ переносится в Docker-путь
+
+- `pm2 logs tg-parser` — на Timeweb используй встроенные логи Apps (вкладка Logs в UI).
+- `pm2 save` / `pm2 startup` / `pm2 resurrect` — Timeweb сам перезапускает контейнер по `restart: unless-stopped`.
+- Файл `~/.pm2/logs/tg-parser-out.log` — логи stdout/stderr контейнера видны в Timeweb UI; для grep — экспорт через UI или `docker logs` локально.
+
 ## Ежедневный summary-лог
 
 По итогу каждого tick (20:00 MSK) daemon печатает многострочный summary-блок в stdout (попадает в `~/.pm2/logs/tg-parser-out.log` на VPS):
