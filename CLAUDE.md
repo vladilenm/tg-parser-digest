@@ -10,7 +10,7 @@
 ### Constraints
 
 - **Tech stack**: Node.js 20.6+ (нужен `--env-file`), TypeScript без шага сборки (`tsx`), ESM, `moduleResolution: bundler`, `strict: true`. Runtime-зависимости ровно три: `telegram` (GramJS), `openai` (DeepSeek через OpenAI-совместимый SDK), `yaml`.
-- **Нет БД, нет Redis, нет Docker, нет cron** — один процесс, один запуск, без внешней инфры.
+- **Нет БД, нет Redis.** Docker — опционально (для деплоя на Timeweb Cloud Apps); локальная разработка остаётся через `npm start` / `npm run start:once`. node-cron используется внутри daemon-режима для расписания 20:15 MSK.
 - **Один оператор, один потребитель** — я запускаю, я читаю в закрытом канале. Никакого multi-tenancy.
 - **Telegram API limits**: окно чтения ≤24ч, ≤50 сообщений на канал по умолчанию, задержка между каналами ≥1с + jitter, не чаще одного прогона в 10–15 минут (дисциплина).
 - **DeepSeek**: один батч-запрос на прогон, `response_format: json_object`, модель выбирает не более 15 записей в итоговом дайджесте.
