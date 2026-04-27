@@ -4,8 +4,8 @@ milestone: v3.0
 milestone_name: milestone
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-04-26T10:37:52.668Z"
-last_activity: 2026-04-26 — ROADMAP.md written, 2-phase structure approved (YOLO code + ACCEPT checkpoint)
+last_updated: "2026-04-27T12:32:20.724Z"
+last_activity: 2026-04-27 — Completed quick task 260427-lky: Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps
 progress:
   total_phases: 2
   completed_phases: 0
@@ -16,7 +16,7 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-04-26 — ROADMAP.md created, Phase 1 ready to plan
+**Last updated:** 2026-04-27 — Completed quick task 260427-lky (Docker + Timeweb Cloud Apps deploy)
 
 ## Project Reference
 
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-04-26)
 Phase: 1 of 2 (Code)
 Plan: — (not yet planned)
 Status: Ready to plan
-Last activity: 2026-04-26 — ROADMAP.md written, 2-phase structure approved (YOLO code + ACCEPT checkpoint)
+Last activity: 2026-04-27 — Completed quick task 260427-lky: Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -71,6 +71,12 @@ Progress: [░░░░░░░░░░] 0%
 - **PLACEHOLDER channels**: empty channels → empty svodki → ACCEPT-01 fails silently.
 - **DeepSeek strict schema**: first live runs may show high drop rate with the new 5-direction structure.
 - **PM2 on VPS**: v2.0 never validated live; Phase 2 is the first real proof.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260427-lky | Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps | 2026-04-27 | bcd7914 | [260427-lky-tg-parser-demo-docker-timeweb-cloud-apps](./quick/260427-lky-tg-parser-demo-docker-timeweb-cloud-apps/) |
 
 ## Session Continuity
 
