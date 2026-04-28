@@ -141,7 +141,9 @@ PM2-путь (`ecosystem.config.cjs`) остаётся рабочим — выб
 
 ### Шаг 3. Подключить persistent volume на `/app/data` (опционально, рекомендуется)
 
-В Timeweb UI добавь volume на mount-point `/app/data`. Без volume каждый редеплой обнуляет:
+Volume настраивается **исключительно через Timeweb UI**, не через `docker-compose.yml` — Timeweb Apps sanitizer блокирует секцию `volumes:` в compose-файле (ошибка `volumes is not allowed in docker-compose.yml`). Зайди в настройки App → раздел Volumes / Disks → добавь mount на `/app/data`.
+
+Без подключенного volume каждый редеплой обнуляет:
 - `data/raw/YYYY-MM-DD.json` — сырые посты до dedup и LLM (нужны для аудита).
 - `data/output/YYYY-MM-DD.md` — отправленный HTML-дайджест (байт-в-байт).
 - `data/dedup-cache/` — hash-кэш для DEDUP-логики (без него возможны повторы постов в первый день после редеплоя).
@@ -157,6 +159,12 @@ Compose автоматически прочитает `./.env` через ста
 Однократный прогон без ожидания cron:
 
     docker compose run --rm tg-parser node --import tsx scripts/run-once.ts
+
+**Про локальный persistent storage:** в `docker-compose.yml` секции `volumes:` нет (Timeweb sanitizer блокирует, см. Шаг 3) — поэтому при `docker compose down` `/app/data` теряется. Если нужно проверить персистентность локально, добавь bind mount ad-hoc:
+
+    docker compose run --rm -v $(pwd)/data:/app/data tg-parser
+
+Либо временно допиши `volumes: [./data:/app/data]` в свой локальный `docker-compose.yml` — **но не коммить**, иначе следующий деплой на Timeweb снова упадёт.
 
 ### Замечание про identity Telegram-аккаунта
 
