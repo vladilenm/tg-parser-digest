@@ -152,7 +152,7 @@ PM2-путь (`ecosystem.config.cjs`) остаётся рабочим — выб
 
     docker compose up --build
 
-Поведение должно быть идентично `npm start`: процесс висит, лог `daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter`, в 20:15 MSK (с jitter 0–30 мин) запускается tick. Остановка — `Ctrl+C` → graceful shutdown (благодаря `init: true` в `docker-compose.yml`, иначе SIGTERM не дойдёт до Node как PID 1).
+Compose автоматически прочитает `./.env` через стандартный substitution mechanism (`${VAR:-}` в [docker-compose.yml](docker-compose.yml)) — никакого `--env-file` флага не нужно. Поведение должно быть идентично `npm start`: процесс висит, лог `daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter`, в 20:15 MSK (с jitter 0–30 мин) запускается tick. Остановка — `Ctrl+C` → graceful shutdown (благодаря `init: true` в `docker-compose.yml`, иначе SIGTERM не дойдёт до Node как PID 1).
 
 Однократный прогон без ожидания cron:
 

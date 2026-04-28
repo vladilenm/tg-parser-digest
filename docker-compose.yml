@@ -1,21 +1,33 @@
 services:
   tg-parser:
     build: .
-    image: tg-parser-demo:latest
-    container_name: tg-parser-demo
     restart: unless-stopped
     # init: true КРИТИЧНО — без него Node как PID 1 не получает SIGTERM правильно,
     # graceful shutdown в src/run.ts:55-65 (ожидание активного прогона перед exit 0) ломается.
     init: true
-    # На Timeweb env приходит через UI, локально — из ./env. Файл .env НЕ попадает в образ
-    # (см. .dockerignore), сюда он подключается рантаймом через env_file.
-    # required: false — без него Compose v2 падает, если .env отсутствует (на Timeweb env идёт из UI,
-    # .env на проде нет → required: true сломал бы деплой).
-    env_file:
-      - path: .env
-        required: false
+    # Env-переменные через substitution ${VAR:-} — работает с Compose 1.27+ (в т.ч. на старых
+    # билд-агентах managed-платформ типа Timeweb Cloud Apps, где compose может быть < v2.24
+    # и не понимать object-form env_file).
+    # Локально: compose автоматически читает ./.env для substitution (см. README §Локальное тестирование).
+    # На Timeweb: переменные приходят из UI → попадают в окружение compose-процесса → подставляются сюда.
+    # ${VAR:-} = «взять из env, иначе пустая строка» — compose не упадёт при отсутствии переменной;
+    # валидация обязательных полей произойдёт в src/telegram.ts / src/deliver.ts при коннекте.
     environment:
       TZ: Europe/Moscow
+      TG_API_ID: ${TG_API_ID:-}
+      TG_API_HASH: ${TG_API_HASH:-}
+      TG_SESSION: ${TG_SESSION:-}
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN:-}
+      TG_CHANNEL_ID: ${TG_CHANNEL_ID:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      FETCH_WINDOW_HOURS: ${FETCH_WINDOW_HOURS:-}
+      MAX_MESSAGES_PER_CHANNEL: ${MAX_MESSAGES_PER_CHANNEL:-}
+      CHANNEL_DELAY_MS: ${CHANNEL_DELAY_MS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-}
+      BOT_TOKEN_ALERTS: ${BOT_TOKEN_ALERTS:-}
+      ALERTS_CHAT_ID: ${ALERTS_CHAT_ID:-}
     volumes:
       # Persistent storage для data/raw, data/output, data/dedup-cache.
       # На Timeweb пользователь подключит volume через UI; локально — bind mount.
