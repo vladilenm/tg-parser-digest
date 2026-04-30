@@ -176,6 +176,95 @@ Compose автоматически прочитает `./.env` через ста
 - `pm2 save` / `pm2 startup` / `pm2 resurrect` — Timeweb сам перезапускает контейнер по `restart: unless-stopped`.
 - Файл `~/.pm2/logs/tg-parser-out.log` — логи stdout/stderr контейнера видны в Timeweb UI; для grep — экспорт через UI или `docker logs` локально.
 
+## Деплой на Timeweb VDS
+
+Альтернатива Cloud Apps. Подходит когда нужен **persistent disk** (архивы прогонов в `data/raw/`, `data/output/`, `data/hash-cache.json` должны переживать редеплой). Cloud Apps этого не умеет — sanitizer блокирует `volumes:` в compose, а managed-storage платформа не предоставляет (см. [docs/hosting.md](docs/hosting.md)).
+
+Стек: Ubuntu 24.04 VDS + Docker (через apt) + GitHub Actions для auto-deploy.
+
+### Шаг 1. Заказать VDS и получить SSH-доступ
+
+В Timeweb Cloud → VDS → Ubuntu 24.04 (минимальный тариф достаточен — RAM ≥1GB). Получить root SSH-ключ или пароль.
+
+### Шаг 2. Однократный bootstrap VDS
+
+С локальной машины:
+
+    scp bootstrap.sh root@<VDS_HOST>:/tmp/
+    ssh root@<VDS_HOST> "bash /tmp/bootstrap.sh"
+
+`bootstrap.sh` (идемпотентный) делает:
+- `apt-get install docker.io docker-compose-plugin git` (если ещё не стоит)
+- `systemctl enable --now docker`
+- `git clone <REPO_URL> /opt/tg-parser-demo` (если ещё не клонирован)
+- Записывает `/opt/tg-parser-demo/.env` с шаблоном (если файла ещё нет; если есть — НЕ перезаписывает)
+
+Дефолтный REPO_URL: `https://github.com/vladilenm/tg-parser-digest.git`. Если репо переехало — переопредели: `REPO_URL=https://github.com/<owner>/<repo>.git bash /tmp/bootstrap.sh`.
+
+### Шаг 3. Заполнить `.env` на VDS
+
+    ssh root@<VDS_HOST>
+    nano /opt/tg-parser-demo/.env
+
+Обязательные ключи (см. также `.env.example`):
+- `TG_API_ID`, `TG_API_HASH`, `TG_SESSION` — генерация локально через `npm run login` (см. выше)
+- `TG_BOT_TOKEN`, `TG_CHANNEL_ID` — Bot для доставки + ID приватного канала Заказчика
+- `DEEPSEEK_API_KEY` — https://platform.deepseek.com
+- `BOT_TOKEN_ALERTS`, `ALERTS_CHAT_ID` — отдельный alert-bot для технических ошибок (личка владельца)
+
+Опциональные ключи уже заполнены дефолтами (`DEEPSEEK_MODEL=deepseek-chat`, `FETCH_WINDOW_HOURS=24`, и т.д.) — менять не обязательно.
+
+### Шаг 4. Первый запуск
+
+    sudo bash /opt/tg-parser-demo/deploy.sh
+
+Что произойдёт: `git pull --ff-only origin main` → `docker compose up -d --build` → `docker compose logs --tail 50`. Проверь, что в логах есть `daemon started, schedule: 0 20 * * * Europe/Moscow` без ошибок коннекта.
+
+### Шаг 5. Настроить auto-deploy через GitHub Actions
+
+В репозитории на GitHub: **Settings → Secrets and variables → Actions**:
+
+**Secrets** (New repository secret):
+- `VDS_HOST` — IP или домен VDS
+- `VDS_USER` — обычно `root` (или созданный пользователь с docker-правами)
+- `VDS_SSH_KEY` — приватный SSH-ключ (full file content, начиная с `-----BEGIN OPENSSH PRIVATE KEY-----`)
+- `VDS_PORT` — опционально, по умолчанию 22
+
+**Variables** (New repository variable):
+- `VDS_DEPLOY_ENABLED` = `true`
+
+После этого каждый `git push` в `main` триггерит `.github/workflows/deploy.yml`, который через `appleboy/ssh-action` выполняет `bash /opt/tg-parser-demo/deploy.sh` на VDS.
+
+Если `VDS_DEPLOY_ENABLED` не выставлен — workflow тихо скипается (без падения CI). Это позволяет коммитить YAML до первого деплоя и не получать красные галочки в PR.
+
+Ручной запуск без push: GitHub → Actions → Deploy to Timeweb VDS → **Run workflow**.
+
+### Логи
+
+    ssh root@<VDS_HOST>
+    cd /opt/tg-parser-demo
+    docker compose logs -f          # tail -f stdout+stderr
+    docker compose logs --tail 200  # последние 200 строк
+
+### Откат на предыдущий коммит
+
+    ssh root@<VDS_HOST>
+    cd /opt/tg-parser-demo
+    git checkout <prev-sha>          # или git checkout HEAD~1
+    bash deploy.sh                   # пересобрать с откатанной версии
+
+После отката `deploy.sh` НЕ будет тянуть main (потому что `git pull --ff-only` упадёт на detached HEAD — это by design, защита от случайной потери отката). Чтобы вернуться к main: `git checkout main && bash deploy.sh`.
+
+### Что НЕ переносится с PM2-пути
+
+- `pm2 logs tg-parser` → `docker compose logs -f`
+- `pm2 startup` / `pm2 save` → `docker-compose.yml` имеет `restart: unless-stopped`, контейнер сам поднимается после перезагрузки VDS
+
+### Что НЕ переносится с Cloud Apps-пути
+
+- Управление env через UI → теперь через файл `/opt/tg-parser-demo/.env` (создан bootstrap.sh, заполняется вручную)
+- Логи в UI → `docker compose logs` через ssh
+
 ## Ежедневный summary-лог
 
 По итогу каждого tick (20:00 MSK) daemon печатает многострочный summary-блок в stdout (попадает в `~/.pm2/logs/tg-parser-out.log` на VPS):

@@ -1,6 +1,6 @@
 # Hosting Decision — tg-parser-demo
 
-**Status:** WIP — выбор не сделан, ждём решения оператора
+**Status:** Решено — выбран вариант C (Timeweb VDS, Ubuntu 24.04, persistent disk через bind mount). Дата решения: 2026-04-30. Реализация: см. секцию «Деплой на Timeweb VDS» в [README.md](../README.md).
 **Дата:** 2026-04-28
 **Контекст:** Timeweb App Platform sanitizer заблокировал `volumes:` в [docker-compose.yml](../docker-compose.yml), затем поддержка Timeweb подтвердила: persistent disk на App Platform **не поддерживается в принципе**. Нужно решить, как сохранять архивы прогонов между редеплоями.
 
@@ -71,3 +71,16 @@
 - **C** → вернуть `volumes: ./data:/app/data` в docker-compose.yml, написать deploy-скрипт `deploy.sh` для ssh-push, документировать ssh-сетап в README
 
 История обсуждения и контекст ошибок Timeweb sanitizer — в commit-сообщениях `f4da47d` и `2d3f9ab`.
+
+---
+
+## Реализация (2026-04-30)
+
+Quick task `260430-cw0`:
+- Восстановлена секция `volumes: ./data:/app/data` в [docker-compose.yml](../docker-compose.yml)
+- Добавлен [bootstrap.sh](../bootstrap.sh) — однократный onboarding свежей Ubuntu 24.04
+- Добавлен [deploy.sh](../deploy.sh) — pull + compose up для CI и ручного запуска
+- Добавлен [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) — auto-deploy на push в main, тихий скип через `vars.VDS_DEPLOY_ENABLED`
+- Документация — [README.md](../README.md) → секция «Деплой на Timeweb VDS»
+
+Варианты A (ephemeral) и B (S3) остаются заархивированы выше для reference и возможного возврата (если в v4+ архив FS станет узким местом).
