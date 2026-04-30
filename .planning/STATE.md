@@ -4,8 +4,8 @@ milestone: v3.0
 milestone_name: milestone
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-04-27T12:32:20.724Z"
-last_activity: 2026-04-27 — Completed quick task 260427-lky: Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps
+last_updated: "2026-04-30T06:32:00.000Z"
+last_activity: 2026-04-30 — Completed quick task 260430-cw0: Деплой tg-parser-demo на Timeweb VDS (вариант C)
 progress:
   total_phases: 2
   completed_phases: 0
@@ -16,7 +16,7 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-04-27 — Completed quick task 260427-lky (Docker + Timeweb Cloud Apps deploy)
+**Last updated:** 2026-04-30 — Completed quick task 260430-cw0 (Timeweb VDS deploy — bootstrap.sh, deploy.sh, GitHub Actions auto-deploy)
 
 ## Project Reference
 
@@ -77,6 +77,7 @@ Progress: [░░░░░░░░░░] 0%
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260427-lky | Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps | 2026-04-27 | bcd7914 | [260427-lky-tg-parser-demo-docker-timeweb-cloud-apps](./quick/260427-lky-tg-parser-demo-docker-timeweb-cloud-apps/) |
+| 260430-cw0 | Деплой tg-parser-demo на Timeweb VDS (вариант C) | 2026-04-30 | 383ffb7 | [260430-cw0-tg-parser-demo-timeweb-vds-c](./quick/260430-cw0-tg-parser-demo-timeweb-vds-c/) |
 
 ## Session Continuity
 
