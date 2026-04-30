@@ -28,8 +28,3 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-}
       BOT_TOKEN_ALERTS: ${BOT_TOKEN_ALERTS:-}
       ALERTS_CHAT_ID: ${ALERTS_CHAT_ID:-}
-    # Bind mount: архивы прогонов (data/raw, data/output, data/hash-cache.json)
-    # переживают `docker compose down/up` и git pull. На VDS работает штатно;
-    # на Timeweb App Platform sanitizer блокировал — поэтому ушли на VDS (см. docs/hosting.md).
-    volumes:
-      - ./data:/app/data
