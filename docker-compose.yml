@@ -28,11 +28,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-}
       BOT_TOKEN_ALERTS: ${BOT_TOKEN_ALERTS:-}
       ALERTS_CHAT_ID: ${ALERTS_CHAT_ID:-}
-    # ВАЖНО: секция `volumes:` НЕ объявляется здесь.
-    # Timeweb Cloud Apps sanitizer блокирует её ("volumes is not allowed in docker-compose.yml") —
-    # persistent storage настраивается ИСКЛЮЧИТЕЛЬНО через Timeweb UI на mount-point /app/data.
-    # Без подключенного volume директория /app/data ephemeral: файлы пропадают при редеплое
-    # (что для cron-раз-в-сутки терпимо, но hash-cache теряется → возможны дубли в первый день).
-    # Для локальной разработки с persistent данными — запуск с ad-hoc bind mount:
-    #   docker compose run --rm -v $(pwd)/data:/app/data tg-parser
-    # Либо временно добавить `volumes: [./data:/app/data]` локально, не коммитя в репо.
+    # Bind mount: архивы прогонов (data/raw, data/output, data/hash-cache.json)
+    # переживают `docker compose down/up` и git pull. На VDS работает штатно;
+    # на Timeweb App Platform sanitizer блокировал — поэтому ушли на VDS (см. docs/hosting.md).
+    volumes:
+      - ./data:/app/data
