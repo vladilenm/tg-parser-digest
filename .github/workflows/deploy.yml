@@ -1,0 +1,27 @@
+name: Deploy to Timeweb VDS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Тихий скип, пока секреты не заданы (например, на этапе подготовки VDS).
+    # Когда оператор пропишет VDS_HOST в Settings → Secrets → Actions, workflow
+    # начнёт срабатывать автоматически без правки YAML.
+    if: ${{ vars.VDS_DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout (для контекста ref в логе)
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.VDS_HOST }}
+          username: ${{ secrets.VDS_USER }}
+          key: ${{ secrets.VDS_SSH_KEY }}
+          port: ${{ secrets.VDS_PORT || 22 }}
+          script: bash /opt/tg-parser-demo/deploy.sh
