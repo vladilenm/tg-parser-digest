@@ -4,8 +4,8 @@ milestone: v3.0
 milestone_name: milestone
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-04-30T06:32:00.000Z"
-last_activity: 2026-04-30 — Completed quick task 260430-j1h: Обновить README.md под v3.0
+last_updated: "2026-05-01T05:45:00.000Z"
+last_activity: 2026-05-01 — Completed quick task 260501-bzh: Фиксы deliver.chunkHtml и summarize таймаут+логи
 progress:
   total_phases: 2
   completed_phases: 0
@@ -16,7 +16,7 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-04-30 — Completed quick task 260430-j1h: Обновить README.md под v3.0
+**Last updated:** 2026-05-01 — Completed quick task 260501-bzh: Фиксы deliver.chunkHtml и summarize таймаут+логи
 
 ## Project Reference
 
@@ -79,6 +79,7 @@ Progress: [░░░░░░░░░░] 0%
 | 260427-lky | Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps | 2026-04-27 | bcd7914 | [260427-lky-tg-parser-demo-docker-timeweb-cloud-apps](./quick/260427-lky-tg-parser-demo-docker-timeweb-cloud-apps/) |
 | 260430-cw0 | Деплой tg-parser-demo на Timeweb VDS (вариант C) | 2026-04-30 | 383ffb7 | [260430-cw0-tg-parser-demo-timeweb-vds-c](./quick/260430-cw0-tg-parser-demo-timeweb-vds-c/) |
 | 260430-j1h | Обновить README.md под v3.0 | 2026-04-30 | 4cc896b | [260430-j1h-readme-md-v3-0](./quick/260430-j1h-readme-md-v3-0/) |
+| 260501-bzh | Фиксы deliver.chunkHtml и summarize таймаут+логи | 2026-05-01 | 7d7275e | [260501-bzh-deliver-chunkhtml-summarize](./quick/260501-bzh-deliver-chunkhtml-summarize/) |
 
 ## Session Continuity
 
