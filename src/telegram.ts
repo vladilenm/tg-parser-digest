@@ -46,9 +46,13 @@ export function createClient(): TelegramClient {
   }
 
   const session = new StringSession(sessionString);
-  return new TelegramClient(session, apiId, apiHash, {
+  const client = new TelegramClient(session, apiId, apiHash, {
     ...CLIENT_IDENTITY,
   });
+  // Поглощаем шумные TIMEOUT-ошибки фонового update-loop GramJS — мы
+  // используем только iterMessages, updates нам не нужны.
+  (client as unknown as { _errorHandler: (e: unknown) => Promise<void> })._errorHandler = async () => {};
+  return client;
 }
 
 /**
