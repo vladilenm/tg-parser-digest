@@ -4,6 +4,7 @@
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { FloodWaitError } from "telegram/errors/index.js";
+import { LogLevel } from "telegram/extensions/Logger.js";
 import type { Post } from "./types.js";
 
 // D-06: правдоподобная идентичность Telegram Desktop на Windows 11, RU.
@@ -49,9 +50,10 @@ export function createClient(): TelegramClient {
   const client = new TelegramClient(session, apiId, apiHash, {
     ...CLIENT_IDENTITY,
   });
-  // Поглощаем шумные TIMEOUT-ошибки фонового update-loop GramJS — мы
-  // используем только iterMessages, updates нам не нужны.
-  (client as unknown as { _errorHandler: (e: unknown) => Promise<void> })._errorHandler = async () => {};
+  // Глушим внутренний логгер GramJS — он гонит TIMEOUT-ошибки фонового
+  // update-loop в console.error после disconnect. Мы используем только
+  // iterMessages, updates нам не нужны; свои события логируем сами.
+  client.setLogLevel(LogLevel.NONE);
   return client;
 }
 
