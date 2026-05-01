@@ -3,6 +3,7 @@
 import OpenAI from "openai";
 import type { Post, DigestJson, DigestItem, Category, Mention } from "./types.js";
 import { DigestJsonSchema } from "./schema.js";
+import { log } from "./logger.js";
 
 // ============================================================================
 // SYSTEM_PROMPT v3.0 — STRUCT-01..03. Экстрактивность обязательна; keyQuote ДОЛЖЕН быть
@@ -210,7 +211,7 @@ export async function summarize(posts: Post[]): Promise<{ html: string; postsDro
   const baseURL = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
   const model = process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
 
-  const client = new OpenAI({ apiKey, baseURL });
+  const client = new OpenAI({ apiKey, baseURL, timeout: 120_000, maxRetries: 1 });
 
   // Helper: один запрос к DeepSeek с произвольным набором system-сообщений.
   const ask = async (extraSystem?: string): Promise<unknown> => {
@@ -221,11 +222,14 @@ export async function summarize(posts: Post[]): Promise<{ html: string; postsDro
       messages.push({ role: "system", content: extraSystem });
     }
     messages.push({ role: "user", content: JSON.stringify({ posts }) });
+    const startedAt = Date.now();
+    log.info(`[summarize] sending ${posts.length} posts to DeepSeek (model=${model})`);
     const completion = await client.chat.completions.create({
       model,
       response_format: { type: "json_object" },
       messages,
     });
+    log.info(`[summarize] response received in ${Date.now() - startedAt}ms`);
     const raw = completion.choices[0]?.message?.content ?? "{}";
     try {
       return JSON.parse(raw);
@@ -243,6 +247,7 @@ export async function summarize(posts: Post[]): Promise<{ html: string; postsDro
     console.warn(
       `[summarize] первая попытка не прошла Zod-валидацию: ${JSON.stringify(result.error.issues).slice(0, 300)} — повтор`
     );
+    log.info("[summarize] retry attempt after schema-validation failure");
     parsed = await ask(
       "Предыдущий ответ не прошёл схема-валидацию. Верни СТРОГИЙ JSON ровно по структуре, описанной в первой системной инструкции, без markdown."
     );
