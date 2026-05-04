@@ -5,7 +5,7 @@ milestone_name: milestone
 status: planning
 stopped_at: Phase 1 context gathered
 last_updated: "2026-05-01T05:45:00.000Z"
-last_activity: 2026-05-04 — Completed quick task 260504-ew9: Рефактор summarize.ts двухпроходная архитектура LLM
+last_activity: 2026-05-04 — Completed quick task 260504-f5z: Vitest unit tests for summarize.ts pure functions
 progress:
   total_phases: 2
   completed_phases: 0
@@ -16,7 +16,7 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-05-04 — Completed quick task 260504-ew9: Рефактор summarize.ts двухпроходная архитектура LLM
+**Last updated:** 2026-05-04 — Completed quick task 260504-f5z: Vitest unit tests for summarize.ts pure functions
 
 ## Project Reference
 
@@ -82,6 +82,7 @@ Progress: [░░░░░░░░░░] 0%
 | 260501-bzh | Фиксы deliver.chunkHtml и summarize таймаут+логи | 2026-05-01 | 7d7275e | [260501-bzh-deliver-chunkhtml-summarize](./quick/260501-bzh-deliver-chunkhtml-summarize/) |
 | 260504-eae | Заголовок дайджеста — полная статистика каналов + per-category лимиты DeepSeek | 2026-05-04 | bb3544e | [260504-eae-fix-1-fix-2-deepseek-15-3-5-mentions](./quick/260504-eae-fix-1-fix-2-deepseek-15-3-5-mentions/) |
 | 260504-ew9 | Рефактор summarize.ts: двухпроходная архитектура LLM (classify + summarize per category) | 2026-05-04 | fc47b20 | [260504-ew9-summarize-ts-1-1-llm-2-6-items-llm](./quick/260504-ew9-summarize-ts-1-1-llm-2-6-items-llm/) |
+| 260504-f5z | Vitest unit tests для summarize.ts (escapeHtml, verifyExtractiveness, renderHtml, groupByBucket) | 2026-05-04 | f71266f | [260504-f5z-vitest-summarize-ts-classifyposts-verify](./quick/260504-f5z-vitest-summarize-ts-classifyposts-verify/) |
 
 ## Session Continuity
 
