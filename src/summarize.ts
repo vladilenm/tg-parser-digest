@@ -57,6 +57,15 @@ export function escapeHtml(s: string): string {
 }
 
 // ============================================================================
+// ChannelStats — статистика каналов, передаётся из pipeline.ts в renderHtml.
+// total = количество каналов в yaml; skipped = каналы с ошибкой парсинга.
+// ============================================================================
+export interface ChannelStats {
+  total: number;
+  skipped: number;
+}
+
+// ============================================================================
 // Форматирование даты для шапки (D-09). Русская локаль, короткий формат.
 // Пример: "21 апр. 2026 г."
 // ============================================================================
@@ -169,14 +178,30 @@ function renderItem(item: DigestItem): string | null {
   return `• ${prefix}${escapeHtml(item.summary)} — <i>«${escapeHtml(item.keyQuote)}»</i> — <a href="${safeUrl}">@${escapeHtml(item.channel)}</a>`;
 }
 
-export function renderHtml(digest: DigestJson, posts: Post[]): string {
+export function renderHtml(digest: DigestJson, posts: Post[], channelStats?: ChannelStats): string {
   const date = formatDateRu(digest.generatedAt);
   const n = posts.length;
   const k = new Set(posts.map((p) => p.channelUsername)).size;
 
+  let subtitle: string;
+  if (channelStats) {
+    const empty = channelStats.total - channelStats.skipped - k;
+    if (empty > 0 && channelStats.skipped > 0) {
+      subtitle = `${n} постов · ${k} из ${channelStats.total} каналов (${empty} без постов, ${channelStats.skipped} ошибок)`;
+    } else if (empty > 0 && channelStats.skipped === 0) {
+      subtitle = `${n} постов · ${k} из ${channelStats.total} каналов (${empty} без постов за сутки)`;
+    } else if (empty === 0 && channelStats.skipped > 0) {
+      subtitle = `${n} постов · ${k} из ${channelStats.total} каналов (${channelStats.skipped} ошибок при парсинге)`;
+    } else {
+      subtitle = `${n} постов из ${k} каналов за 24ч`;
+    }
+  } else {
+    subtitle = `${n} постов из ${k} каналов за 24ч`;
+  }
+
   const header =
     `<b>Нефтегаз — ${escapeHtml(date)}</b>\n` +
-    `<i>${n} постов из ${k} каналов за 24ч</i>\n\n`;
+    `<i>${subtitle}</i>\n\n`;
 
   const sectionsHtml: string[] = [];
   for (const { key, header: sectionHeader } of SECTION_HEADERS) {
@@ -203,7 +228,7 @@ export function renderHtml(digest: DigestJson, posts: Post[]): string {
 // Возвращает {html, postsDropped} — postsDropped попадёт в RunSummary.
 // На невалидной схеме делает retry x1; повторный fail → throw (поднимется до ALERT-02).
 // ============================================================================
-export async function summarize(posts: Post[]): Promise<{ html: string; postsDropped: number }> {
+export async function summarize(posts: Post[], channelStats?: ChannelStats): Promise<{ html: string; postsDropped: number }> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY не задан.");
@@ -261,6 +286,6 @@ export async function summarize(posts: Post[]): Promise<{ html: string; postsDro
 
   // STRUCT-03 + Core Value: серверная верификация дословности keyQuote.
   const { digest, droppedCount } = verifyExtractiveness(result.data, posts);
-  const html = renderHtml(digest, posts);
+  const html = renderHtml(digest, posts, channelStats);
   return { html, postsDropped: droppedCount };
 }
