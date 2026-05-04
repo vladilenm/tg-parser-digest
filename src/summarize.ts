@@ -35,7 +35,7 @@ const SYSTEM_PROMPT = [
   "6) Если пост НЕ попадает ни в одну из 5 категорий, но содержит хотя бы одну из 3 компаний — клади его в массив mentions с category=null и непустым mentions[]. Это «orphan-mention».",
   "7) Если пост НЕ попадает в категорию И не упоминает ни одной из 3 компаний — отбрасывай (не возвращай нигде).",
   "8) Один пост попадает РОВНО в один массив (либо в категорию, либо в orphan-mention), не в оба.",
-  "9) Отбирай не более 3 самых содержательных постов на каждую из 5 категорий и не более 5 в массив mentions. Итого не более 20 записей.",
+  "9) Отбирай не более 15 самых содержательных постов в сумме по всем массивам.",
   "10) Возвращай строго JSON без markdown и комментариев следующего вида:",
   "{",
   '  "generatedAt": "ISO8601",',
@@ -54,15 +54,6 @@ const SYSTEM_PROMPT = [
 // ============================================================================
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-// ============================================================================
-// ChannelStats — статистика каналов, передаётся из pipeline.ts в renderHtml.
-// total = количество каналов в yaml; skipped = каналы с ошибкой парсинга.
-// ============================================================================
-export interface ChannelStats {
-  total: number;
-  skipped: number;
 }
 
 // ============================================================================
@@ -178,30 +169,14 @@ function renderItem(item: DigestItem): string | null {
   return `• ${prefix}${escapeHtml(item.summary)} — <i>«${escapeHtml(item.keyQuote)}»</i> — <a href="${safeUrl}">@${escapeHtml(item.channel)}</a>`;
 }
 
-export function renderHtml(digest: DigestJson, posts: Post[], channelStats?: ChannelStats): string {
+export function renderHtml(digest: DigestJson, posts: Post[]): string {
   const date = formatDateRu(digest.generatedAt);
   const n = posts.length;
   const k = new Set(posts.map((p) => p.channelUsername)).size;
 
-  let subtitle: string;
-  if (channelStats) {
-    const empty = channelStats.total - channelStats.skipped - k;
-    if (empty > 0 && channelStats.skipped > 0) {
-      subtitle = `${n} постов · ${k} из ${channelStats.total} каналов (${empty} без постов, ${channelStats.skipped} ошибок)`;
-    } else if (empty > 0 && channelStats.skipped === 0) {
-      subtitle = `${n} постов · ${k} из ${channelStats.total} каналов (${empty} без постов за сутки)`;
-    } else if (empty === 0 && channelStats.skipped > 0) {
-      subtitle = `${n} постов · ${k} из ${channelStats.total} каналов (${channelStats.skipped} ошибок при парсинге)`;
-    } else {
-      subtitle = `${n} постов из ${k} каналов за 24ч`;
-    }
-  } else {
-    subtitle = `${n} постов из ${k} каналов за 24ч`;
-  }
-
   const header =
     `<b>Нефтегаз — ${escapeHtml(date)}</b>\n` +
-    `<i>${subtitle}</i>\n\n`;
+    `<i>${n} постов из ${k} каналов за 24ч</i>\n\n`;
 
   const sectionsHtml: string[] = [];
   for (const { key, header: sectionHeader } of SECTION_HEADERS) {
@@ -228,7 +203,7 @@ export function renderHtml(digest: DigestJson, posts: Post[], channelStats?: Cha
 // Возвращает {html, postsDropped} — postsDropped попадёт в RunSummary.
 // На невалидной схеме делает retry x1; повторный fail → throw (поднимется до ALERT-02).
 // ============================================================================
-export async function summarize(posts: Post[], channelStats?: ChannelStats): Promise<{ html: string; postsDropped: number }> {
+export async function summarize(posts: Post[]): Promise<{ html: string; postsDropped: number }> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY не задан.");
@@ -286,6 +261,6 @@ export async function summarize(posts: Post[], channelStats?: ChannelStats): Pro
 
   // STRUCT-03 + Core Value: серверная верификация дословности keyQuote.
   const { digest, droppedCount } = verifyExtractiveness(result.data, posts);
-  const html = renderHtml(digest, posts, channelStats);
+  const html = renderHtml(digest, posts);
   return { html, postsDropped: droppedCount };
 }

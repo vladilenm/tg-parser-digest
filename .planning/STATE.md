@@ -5,7 +5,7 @@ milestone_name: milestone
 status: planning
 stopped_at: Phase 1 context gathered
 last_updated: "2026-05-01T05:45:00.000Z"
-last_activity: 2026-05-04 — Completed quick task 260504-eae: Fix 1: заголовок дайджеста — добавить полную статистику каналов (всего / с постами / пустых). Fix 2: промпт DeepSeek — заменить глобальный лимит 15 постов на постатегорийный (до 3 на категорию + до 5 на mentions), чтобы важные посты не вытеснялись конкурентами из других тем.
+last_activity: 2026-05-01 — Completed quick task 260501-bzh: Фиксы deliver.chunkHtml и summarize таймаут+логи
 progress:
   total_phases: 2
   completed_phases: 0
@@ -16,7 +16,7 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-05-04 — Completed quick task 260504-eae: заголовок дайджеста со статистикой каналов + per-category лимиты DeepSeek
+**Last updated:** 2026-05-01 — Completed quick task 260501-bzh: Фиксы deliver.chunkHtml и summarize таймаут+логи
 
 ## Project Reference
 
@@ -80,7 +80,6 @@ Progress: [░░░░░░░░░░] 0%
 | 260430-cw0 | Деплой tg-parser-demo на Timeweb VDS (вариант C) | 2026-04-30 | 383ffb7 | [260430-cw0-tg-parser-demo-timeweb-vds-c](./quick/260430-cw0-tg-parser-demo-timeweb-vds-c/) |
 | 260430-j1h | Обновить README.md под v3.0 | 2026-04-30 | 4cc896b | [260430-j1h-readme-md-v3-0](./quick/260430-j1h-readme-md-v3-0/) |
 | 260501-bzh | Фиксы deliver.chunkHtml и summarize таймаут+логи | 2026-05-01 | 7d7275e | [260501-bzh-deliver-chunkhtml-summarize](./quick/260501-bzh-deliver-chunkhtml-summarize/) |
-| 260504-eae | Fix 1: заголовок дайджеста — полная статистика каналов. Fix 2: per-category лимиты DeepSeek | 2026-05-04 | bb3544e | [260504-eae-fix-1-fix-2-deepseek-15-3-5-mentions](./quick/260504-eae-fix-1-fix-2-deepseek-15-3-5-mentions/) |
 
 ## Session Continuity
 

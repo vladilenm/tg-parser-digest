@@ -124,7 +124,7 @@ export async function runPipeline(): Promise<RunSummary> {
       log.info("[pipeline] all posts dedup'ed by hash-cache — skipping digest");
     } else {
       // STRUCT-01..03 (D-09 step 5): summarize возвращает {html, postsDropped}.
-      const { html, postsDropped: dropped } = await summarize(freshPosts, { total: channels.length, skipped: channelsSkipped });
+      const { html, postsDropped: dropped } = await summarize(freshPosts);
       postsDropped = dropped;
 
       // RENDER-01..03 (D-09 step 7): доставка в Telegram.
