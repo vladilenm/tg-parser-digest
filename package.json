@@ -9,7 +9,9 @@
   "scripts": {
     "login": "node --env-file=.env --import tsx scripts/login.ts",
     "start": "node --env-file=.env --import tsx src/run.ts",
-    "start:once": "node --env-file=.env --import tsx scripts/run-once.ts"
+    "start:once": "node --env-file=.env --import tsx scripts/run-once.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "node-cron": "^3.0.3",
@@ -22,6 +24,7 @@
     "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.11",
     "tsx": "^4.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.5"
   }
 }
