@@ -76,7 +76,7 @@ function formatDateRu(iso: string): string {
 // Побочный эффект: console.warn на каждое нарушение.
 // STRUCT-03: droppedCount будет учтён в RunSummary.postsDropped.
 // ============================================================================
-function verifyExtractiveness(
+export function verifyExtractiveness(
   digest: DigestJson,
   posts: Post[]
 ): { digest: DigestJson; droppedCount: number } {
@@ -196,6 +196,44 @@ export function renderHtml(digest: DigestJson, posts: Post[]): string {
 
   // Между секциями — \n\n (пустая строка, граница для chunkHtml).
   return header + sectionsHtml.join("\n\n");
+}
+
+// ============================================================================
+// groupByBucket — pure helper: distributes posts into category/mentions buckets
+// based on a classification array (e.g. from a classify LLM pass or tests).
+// Posts with category=null and non-empty mentions → "mentions" bucket.
+// Posts with category=null and empty mentions → silently excluded.
+// ============================================================================
+export type ClassificationEntry = {
+  url: string;
+  category: Category | null;
+  mentions: Mention[];
+};
+
+export function groupByBucket(
+  classifications: ClassificationEntry[],
+  posts: Post[]
+): Map<string, Post[]> {
+  const CATEGORIES = ["bunker", "oil", "kerosene", "petrochem", "bitumen"] as const;
+  const buckets = new Map<string, Post[]>();
+  for (const cat of CATEGORIES) buckets.set(cat, []);
+  buckets.set("mentions", []);
+
+  const classMap = new Map<string, ClassificationEntry>();
+  for (const c of classifications) classMap.set(c.url, c);
+
+  for (const post of posts) {
+    const cls = classMap.get(post.url);
+    if (!cls) continue;
+    if (cls.category !== null) {
+      buckets.get(cls.category)!.push(post);
+    } else if (cls.mentions.length > 0) {
+      buckets.get("mentions")!.push(post);
+    }
+    // else: irrelevant — silently excluded
+  }
+
+  return buckets;
 }
 
 // ============================================================================
