@@ -1,7 +1,7 @@
 // src/types.ts — общие типы для пайплайна tg-parser-demo (v3.0).
 
 export interface Post {
-  channelUsername: string; // без "@", как в channels.yaml
+  channelUsername: string; // без "@", как в channels.json
   messageId: number;
   postedAt: string; // ISO 8601
   text: string;
