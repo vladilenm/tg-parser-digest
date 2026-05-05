@@ -1,9 +1,9 @@
 // src/pipeline.ts — логика одного прогона tg-parser-demo.
 // Вызывается из daemon-tick в src/run.ts; сама не знает про node-cron/PM2.
+// Список каналов читается через src/channels-store.ts (channels.json + auto-migration).
 
-import { readFileSync } from "node:fs";
-import yaml from "yaml";
 import type { Post, RunSummary } from "./types.js";
+import { loadChannels, type ChannelEntry } from "./channels-store.js";
 import { createClient, fetchLast24h, sleep, randomInt } from "./telegram.js";
 import { summarize } from "./summarize.js";
 import { sendToChannel } from "./deliver.js";
@@ -11,37 +11,10 @@ import { log } from "./logger.js";
 import { writeRaw, writeOutput } from "./archive.js";
 import { dedupAgainstCache, commitHashCache } from "./dedup.js";
 
-interface ChannelEntry {
-  username: string;
-  priority?: number;
-}
-
-interface ChannelsFile {
-  channels: ChannelEntry[];
-}
-
-function loadChannelsYaml(path: string): ChannelEntry[] {
-  const raw = readFileSync(path, "utf8");
-  const parsed = yaml.parse(raw) as ChannelsFile | null;
-  if (!parsed || !Array.isArray(parsed.channels)) {
-    throw new Error(`${path}: корневой ключ "channels" отсутствует или не массив`);
-  }
-  const channels: ChannelEntry[] = [];
-  for (const c of parsed.channels) {
-    if (!c || typeof c.username !== "string" || !c.username) {
-      throw new Error(`${path}: запись без строкового поля username: ${JSON.stringify(c)}`);
-    }
-    channels.push({ username: c.username, priority: c.priority });
-  }
-  if (channels.length < 1) {
-    throw new Error(`${path}: список channels пуст`);
-  }
-  return channels;
-}
-
 /**
- * Один прогон пайплайна: читает channels.yaml, обходит все каналы (per-channel try/catch),
- * дедуплицирует посты в рамках прогона, отдаёт батч DeepSeek'у, шлёт HTML в канал, возвращает RunSummary.
+ * Один прогон пайплайна: читает channels.json через channels-store (auto-migration с YAML на первом запуске),
+ * обходит все каналы (per-channel try/catch), дедуплицирует посты в рамках прогона,
+ * отдаёт батч DeepSeek'у, шлёт HTML в канал, возвращает RunSummary.
  * Не завершает процесс — ошибки пробрасывает вызывающему (daemon в src/run.ts).
  */
 export async function runPipeline(): Promise<RunSummary> {
@@ -49,7 +22,7 @@ export async function runPipeline(): Promise<RunSummary> {
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
 
-  const channels = loadChannelsYaml("./channels.yaml");
+  const channels: ChannelEntry[] = loadChannels();
   const limit = Number(process.env.MAX_MESSAGES_PER_CHANNEL ?? 50);
   const windowHours = Number(process.env.FETCH_WINDOW_HOURS ?? 24);
   // ANTIBAN: 1500 мс база + jitter 0–2500 мс = 1.5–4 сек разброс между каналами.
