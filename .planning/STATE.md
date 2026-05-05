@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: "Управление каналами + парсинг сайтов"
 status: planning
-stopped_at: Defining requirements
+stopped_at: Roadmap created — ready to plan Phase 1
 last_updated: "2026-05-05T00:00:00.000Z"
-last_activity: 2026-05-05 — Milestone v4.0 started
+last_activity: 2026-05-05 — Roadmap created for v4.0 (3 phases, 12 requirements)
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -16,7 +16,7 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-05-05 — Milestone v4.0 started
+**Last updated:** 2026-05-05 — Roadmap created for v4.0
 
 ## Project Reference
 
@@ -24,14 +24,14 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 
 **Core Value:** В 20:00 MSK без вмешательства оператора получать в закрытом канале Заказчика структурированный дайджест нефтегаза за последние 24 часа, ранжированный по 5 направлениям и помеченный упоминаниями Роснефть/Лукойл/Газпром, в котором каждая цитата дословно присутствует в исходном посте — без галлюцинаций LLM, без повторов из вчерашних сводок, с полным архивом прогонов на ФС.
 
-**Current Focus:** Not started (defining requirements)
+**Current Focus:** Phase 1 — Storage Migration
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-05 — Milestone v4.0 started
+Phase: 1 of 3 (Storage Migration)
+Plan: — (not started)
+Status: Ready to plan
+Last activity: 2026-05-05 — Roadmap created, 12/12 requirements mapped
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -47,48 +47,39 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Code | TBD | - | - |
-| 2. Accept | TBD | - | - |
+| 1. Storage Migration | TBD | - | - |
+| 2. Bot Commands | TBD | - | - |
+| 3. Web Scraping | TBD | - | - |
 
 *Updated after each plan completion*
 
 ## Accumulated Context
 
-### Key Decisions (v3.0)
+### Key Decisions (v4.0)
 
-- **2-phase structure chosen** (not 4 waves): Wave order preserved as plan ordering within Phase 1; ACCEPT is physically gated by 7 calendar days of runtime, not by code completion alone.
-- **YOLO-code phase** follows v2.0 pattern — 1 phase, multiple plans ordered by value delivery priority (STRUCT/RENDER first, then DEDUP/ARCH, then ALERT/DOC).
+- **3-phase structure**: STORE (foundation) → BOT (depends on store) → WEB (independent, additive). Phase 3 can never break phases 1–2.
+- **Raw fetch polling for bot**: no Telegraf/grammY; 3 commands do not justify framework overhead. See REQUIREMENTS.md Out of Scope.
+- **cheerio for web scraping**: only new runtime dep (`cheerio ^1.0.0`); `@mozilla/readability` deferred to v4.x if selector fragility is observed.
+- **In-process mutex for channels.json**: must be implemented in `channels-store.ts` before any other code touches the file (race condition at 20:00 MSK cron tick).
 - Full decision log: `PROJECT.md` → Key Decisions table.
 
-### Operator Prerequisite (before Phase 2 can start)
+### Critical Pitfall (Phase 1)
 
-- 38 PLACEHOLDER channels in `channels.yaml` must be replaced with real usernames before 7-day smoke
-- `BOT_TOKEN_ALERTS` + `ALERTS_CHAT_ID` must be created (BotFather `/newbot`) and added to `.env` on VPS
-
-### Open Blockers / Risks
-
-- **Deadline pressure**: 2 working days of code + 7-day smoke until 22.05.2026. No buffer.
-- **PLACEHOLDER channels**: empty channels → empty svodki → ACCEPT-01 fails silently.
-- **DeepSeek strict schema**: first live runs may show high drop rate with the new 5-direction structure.
-- **PM2 on VPS**: v2.0 never validated live; Phase 2 is the first real proof.
+Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON → no digest. `channels-store.ts` mutex is a safety gate; implement before wiring any other v4.0 code.
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260427-lky | Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps | 2026-04-27 | bcd7914 | [260427-lky-tg-parser-demo-docker-timeweb-cloud-apps](./quick/260427-lky-tg-parser-demo-docker-timeweb-cloud-apps/) |
-| 260430-cw0 | Деплой tg-parser-demo на Timeweb VDS (вариант C) | 2026-04-30 | 383ffb7 | [260430-cw0-tg-parser-demo-timeweb-vds-c](./quick/260430-cw0-tg-parser-demo-timeweb-vds-c/) |
-| 260430-j1h | Обновить README.md под v3.0 | 2026-04-30 | 4cc896b | [260430-j1h-readme-md-v3-0](./quick/260430-j1h-readme-md-v3-0/) |
-| 260501-bzh | Фиксы deliver.chunkHtml и summarize таймаут+логи | 2026-05-01 | 7d7275e | [260501-bzh-deliver-chunkhtml-summarize](./quick/260501-bzh-deliver-chunkhtml-summarize/) |
-| 260504-eae | Заголовок дайджеста — полная статистика каналов + per-category лимиты DeepSeek | 2026-05-04 | bb3544e | [260504-eae-fix-1-fix-2-deepseek-15-3-5-mentions](./quick/260504-eae-fix-1-fix-2-deepseek-15-3-5-mentions/) |
-| 260504-ew9 | Рефактор summarize.ts: двухпроходная архитектура LLM (classify + summarize per category) | 2026-05-04 | fc47b20 | [260504-ew9-summarize-ts-1-1-llm-2-6-items-llm](./quick/260504-ew9-summarize-ts-1-1-llm-2-6-items-llm/) |
-| 260504-f5z | Vitest unit tests для summarize.ts (escapeHtml, verifyExtractiveness, renderHtml, groupByBucket) | 2026-05-04 | f71266f | [260504-f5z-vitest-summarize-ts-classifyposts-verify](./quick/260504-f5z-vitest-summarize-ts-classifyposts-verify/) |
+| # | Description | Date | Commit |
+|---|-------------|------|--------|
+| 260504-f5z | Vitest unit tests для summarize.ts | 2026-05-04 | f71266f |
+| 260504-ew9 | Рефактор summarize.ts двухпроходная LLM-архитектура | 2026-05-04 | fc47b20 |
+| 260504-eae | Заголовок дайджеста + per-category DeepSeek лимиты | 2026-05-04 | bb3544e |
 
 ## Session Continuity
 
-**Last session:** 2026-04-26T10:37:52.664Z
-**Stopped at:** Phase 1 context gathered
-**Next action:** `/gsd-plan-phase 1` (or `/gsd-discuss-phase 1`)
+**Last session:** 2026-05-05
+**Stopped at:** Roadmap created — 3 phases, 12 requirements mapped
+**Next action:** `/gsd-plan-phase 1`
 
 ---
-*State updated: 2026-04-26 — Phase 1 ready to plan*
+*State updated: 2026-05-05 — v4.0 roadmap created, Phase 1 ready to plan*

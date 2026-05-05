@@ -62,24 +62,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BOT-01 | TBD | Pending |
-| BOT-02 | TBD | Pending |
-| BOT-03 | TBD | Pending |
-| BOT-04 | TBD | Pending |
-| BOT-05 | TBD | Pending |
-| STORE-01 | TBD | Pending |
-| STORE-02 | TBD | Pending |
-| STORE-03 | TBD | Pending |
-| WEB-01 | TBD | Pending |
-| WEB-02 | TBD | Pending |
-| WEB-03 | TBD | Pending |
-| WEB-04 | TBD | Pending |
+| BOT-01 | Phase 2 | Pending |
+| BOT-02 | Phase 2 | Pending |
+| BOT-03 | Phase 2 | Pending |
+| BOT-04 | Phase 2 | Pending |
+| BOT-05 | Phase 2 | Pending |
+| STORE-01 | Phase 1 | Pending |
+| STORE-02 | Phase 1 | Pending |
+| STORE-03 | Phase 1 | Pending |
+| WEB-01 | Phase 3 | Pending |
+| WEB-02 | Phase 3 | Pending |
+| WEB-03 | Phase 3 | Pending |
+| WEB-04 | Phase 3 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 12 total
-- Mapped to phases: 0
-- Unmapped: 12 ⚠️
+- Mapped to phases: 12
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-05*
-*Last updated: 2026-05-05 after initial definition*
+*Last updated: 2026-05-05 — traceability mapped after roadmap creation*
