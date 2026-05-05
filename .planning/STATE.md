@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: milestone
+milestone: v4.0
+milestone_name: "Управление каналами + парсинг сайтов"
 status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-05-01T05:45:00.000Z"
-last_activity: 2026-05-04 — Completed quick task 260504-f5z: Vitest unit tests for summarize.ts pure functions
+stopped_at: Defining requirements
+last_updated: "2026-05-05T00:00:00.000Z"
+last_activity: 2026-05-05 — Milestone v4.0 started
 progress:
-  total_phases: 2
+  total_phases: 0
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -16,22 +16,22 @@ progress:
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-05-04 — Completed quick task 260504-f5z: Vitest unit tests for summarize.ts pure functions
+**Last updated:** 2026-05-05 — Milestone v4.0 started
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (обновлён 2026-04-26)
+See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 
 **Core Value:** В 20:00 MSK без вмешательства оператора получать в закрытом канале Заказчика структурированный дайджест нефтегаза за последние 24 часа, ранжированный по 5 направлениям и помеченный упоминаниями Роснефть/Лукойл/Газпром, в котором каждая цитата дословно присутствует в исходном посте — без галлюцинаций LLM, без повторов из вчерашних сводок, с полным архивом прогонов на ФС.
 
-**Current Focus:** Phase 1 — Code (STRUCT/RENDER/DEDUP/ARCH/ALERT/DOC)
+**Current Focus:** Not started (defining requirements)
 
 ## Current Position
 
-Phase: 1 of 2 (Code)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-04-27 — Completed quick task 260427-lky: Упаковать tg-parser-demo в Docker для Timeweb Cloud Apps
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-05 — Milestone v4.0 started
 
 Progress: [░░░░░░░░░░] 0%
 
