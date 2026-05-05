@@ -29,3 +29,31 @@ export const DigestJsonSchema = z.object({
 });
 
 export type DigestJsonZ = z.infer<typeof DigestJsonSchema>;
+
+// ============================================================================
+// Two-pass LLM schemas (260504-ew9)
+// Pass 1: classification — one LLM call to classify all posts into categories + mentions
+// Pass 2: per-category summarization — one LLM call per non-empty bucket
+// ============================================================================
+
+export const ClassificationEntrySchema = z.object({
+  url: z.string().url(),
+  category: CategorySchema.nullable(),
+  mentions: z.array(MentionSchema),
+});
+
+export const ClassificationResponseSchema = z.object({
+  classifications: z.array(ClassificationEntrySchema),
+});
+
+export const CategoryItemSchema = z.object({
+  summary: z.string().min(1).max(500),
+  keyQuote: z.string().min(1),
+  url: z.string().url(),
+  channel: z.string().min(1),
+  mentions: z.array(MentionSchema),
+});
+
+export const CategoryItemsResponseSchema = z.object({
+  items: z.array(CategoryItemSchema),
+});
