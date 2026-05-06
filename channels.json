@@ -1,184 +1,139 @@
 {
   "channels": [
     {
-      "username": "oil_capital",
-      "priority": 1
+      "username": "oil_capital"
     },
     {
-      "username": "oilfly",
-      "priority": 2
+      "username": "oilfly"
     },
     {
-      "username": "energytodaygroup",
-      "priority": 3
+      "username": "energytodaygroup"
     },
     {
-      "username": "baidildinovoil",
-      "priority": 4
+      "username": "baidildinovoil"
     },
     {
-      "username": "proeconomics",
-      "priority": 5
+      "username": "proeconomics"
     },
     {
-      "username": "neftegazovayavertical",
-      "priority": 6
+      "username": "neftegazovayavertical"
     },
     {
-      "username": "needleraw",
-      "priority": 7
+      "username": "needleraw"
     },
     {
-      "username": "russicaRU",
-      "priority": 8
+      "username": "russicaRU"
     },
     {
-      "username": "esgworld",
-      "priority": 9
+      "username": "esgworld"
     },
     {
-      "username": "kazservice",
-      "priority": 10
+      "username": "kazservice"
     },
     {
-      "username": "anocts",
-      "priority": 11
+      "username": "anocts"
     },
     {
-      "username": "nefte_baza",
-      "priority": 12
+      "username": "nefte_baza"
     },
     {
-      "username": "mash_tech",
-      "priority": 13
+      "username": "mash_tech"
     },
     {
-      "username": "FUELSdigest",
-      "priority": 14
+      "username": "FUELSdigest"
     },
     {
-      "username": "chemproms",
-      "priority": 15
+      "username": "chemproms"
     },
     {
-      "username": "Infotek_Russia",
-      "priority": 16
+      "username": "Infotek_Russia"
     },
     {
-      "username": "lukoil_info",
-      "priority": 17
+      "username": "lukoil_info"
     },
     {
-      "username": "lukoilofficial",
-      "priority": 18
+      "username": "lukoilofficial"
     },
     {
-      "username": "minenergorf",
-      "priority": 19
+      "username": "minenergorf"
     },
     {
-      "username": "neftegazterritory",
-      "priority": 20
+      "username": "neftegazterritory"
     },
     {
-      "username": "bitumomt",
-      "priority": 21
+      "username": "bitumomt"
     },
     {
-      "username": "actekactek",
-      "priority": 22
+      "username": "actekactek"
     },
     {
-      "username": "Burovaia",
-      "priority": 23
+      "username": "Burovaia"
     },
     {
-      "username": "Rupec",
-      "priority": 24
+      "username": "Rupec"
     },
     {
-      "username": "okolo_AZS",
-      "priority": 26
+      "username": "okolo_AZS"
     },
     {
-      "username": "FUELSDigest_Database",
-      "priority": 27
+      "username": "FUELSDigest_Database"
     },
     {
-      "username": "Neftexpert",
-      "priority": 28
+      "username": "Neftexpert"
     },
     {
-      "username": "cdutek",
-      "priority": 29
+      "username": "cdutek"
     },
     {
-      "username": "rosneftinfo",
-      "priority": 30
+      "username": "rosneftinfo"
     },
     {
-      "username": "rosneftofficial",
-      "priority": 31
+      "username": "rosneftofficial"
     },
     {
-      "username": "papagaz",
-      "priority": 32
+      "username": "papagaz"
     },
     {
-      "username": "neftianka",
-      "priority": 33
+      "username": "neftianka"
     },
     {
-      "username": "pacedot",
-      "priority": 34
+      "username": "pacedot"
     },
     {
-      "username": "oilgasinform",
-      "priority": 35
+      "username": "oilgasinform"
     },
     {
-      "username": "b2x_lubricants",
-      "priority": 36
+      "username": "b2x_lubricants"
     },
     {
-      "username": "EnergyLeaderClub",
-      "priority": 37
+      "username": "EnergyLeaderClub"
     },
     {
-      "username": "makstonengineering_enkyafina",
-      "priority": 39
+      "username": "makstonengineering_enkyafina"
     },
     {
-      "username": "energoatlas",
-      "priority": 40
+      "username": "energoatlas"
     },
     {
-      "username": "npnh1966",
-      "priority": 42
+      "username": "npnh1966"
     },
     {
-      "username": "energystrategyNataliaGrib",
-      "priority": 43
+      "username": "energystrategyNataliaGrib"
     },
     {
-      "username": "finamalert",
-      "priority": 44
+      "username": "finamalert"
     },
     {
-      "username": "finvibe",
-      "priority": 45
+      "username": "finvibe"
     },
     {
-      "username": "victorstepanych",
-      "priority": 46
+      "username": "victorstepanych"
     },
     {
-      "username": "preemnik",
-      "priority": 47
+      "username": "preemnik"
     },
     {
-      "username": "ejdailyru",
-      "priority": 48
+      "username": "ejdailyru"
     }
   ]
 }
