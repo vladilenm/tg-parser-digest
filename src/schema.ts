@@ -57,3 +57,20 @@ export const CategoryItemSchema = z.object({
 export const CategoryItemsResponseSchema = z.object({
   items: z.array(CategoryItemSchema),
 });
+
+// ============================================================================
+// WebsitesFileSchema (Phase 3 D-22) — валидация ./websites.json при чтении.
+// Формат: { websites: [{ url, name? }] }. Минимум 1 запись (как ChannelsFileSchema).
+// url: z.string().url() — защита от SSRF/URL-injection (security threat T-03-01).
+// name: optional, используется как Post.channelUsername (fallback: hostname без www).
+// ============================================================================
+export const WebsiteEntrySchema = z.object({
+  url: z.string().url(),
+  name: z.string().min(1).optional(),
+});
+
+export const WebsitesFileSchema = z.object({
+  websites: z.array(WebsiteEntrySchema).min(1),
+});
+
+export type WebsiteEntry = z.infer<typeof WebsiteEntrySchema>;

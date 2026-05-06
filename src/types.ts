@@ -48,3 +48,27 @@ export interface RunSummary {
   digestDelivered: boolean;
   errors: string[];
 }
+
+/**
+ * Phase 3 (D-06): итог одного запуска web-pipeline.
+ * Параллельный аналог RunSummary, поля специфичные для web-сценария.
+ * websitesTotal — total из websites.json.
+ * websitesSucceeded — fetch ok + extract ok + text >= 200 chars.
+ * websitesSkipped — невалидные/недоступные/пустые сайты (D-05, D-15..D-18).
+ * itemsCollected — посты, переданные в summarize() (== websitesSucceeded).
+ * itemsDropped — отброшено LLM по STRUCT-03 (вне 5 категорий и без mentions).
+ * digestDelivered — true если sendToChannel успешно отработал (включая placeholder D-13).
+ */
+export interface WebRunSummary {
+  runId: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  websitesTotal: number;
+  websitesSucceeded: number;
+  websitesSkipped: number;
+  itemsCollected: number;
+  itemsDropped: number;
+  digestDelivered: boolean;
+  errors: string[];
+}
