@@ -7,12 +7,11 @@ import { readFileSync, existsSync } from "node:fs";
 import * as cheerio from "cheerio";
 import type { Post, WebRunSummary } from "./types.js";
 import { WebsitesFileSchema, type WebsiteEntry } from "./schema.js";
-import { summarize } from "./summarize.js";
+import { summarize, escapeHtml } from "./summarize.js";
 import { sendToChannel } from "./deliver.js";
 import { writeRawWeb, writeOutputWeb } from "./archive.js";
 import { sendAlert } from "./alert.js";
 import { log } from "./logger.js";
-// NOTE: HTML-escape helper НЕ импортируется в Task 1 — он добавится в Task 2 при добавлении buildWebHeader.
 
 // D-23: путь захардкожен как константа, не из env.
 export const WEBSITES_PATH = "./websites.json";
@@ -138,4 +137,184 @@ export function siteToPost(site: WebsiteEntry, text: string): Post | null {
   };
 }
 
-// (продолжение — runWebPipeline + buildWebHeader + composeWebDigest в Task 2)
+// =============================================================================
+// formatDateRu — D-10: тот же формат «6 мая 2026 г.» что в TG-сводке.
+// Дублируем (не импортируем) — formatDateRu в summarize.ts private (line 90).
+// Вынос в общий helper отложен — tiny-копия проще, чем модулировать ради 8 строк.
+// =============================================================================
+function formatDateRu(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
+
+// =============================================================================
+// buildWebHeader — D-10, D-11: web-специфичные заголовок и субзаголовок.
+// header: <b>🌐 Веб-источники — {date}</b>
+// subheader: <i>X сайтов из Y обработано</i>
+// =============================================================================
+function buildWebHeader(succeeded: number, total: number): string {
+  const date = formatDateRu(new Date().toISOString());
+  return (
+    `<b>🌐 Веб-источники — ${escapeHtml(date)}</b>\n` +
+    `<i>${succeeded} сайтов из ${total} обработано</i>\n\n`
+  );
+}
+
+// =============================================================================
+// buildPlaceholderHtml — D-13: technical-fail placeholder.
+// Шлём в канал даже при 0 валидных сайтах, чтобы Заказчик видел «прогон был».
+// 5 пустых секций + блок mentions, симметрично пустой TG-сводке.
+// =============================================================================
+function buildPlaceholderHtml(total: number): string {
+  const header = buildWebHeader(0, total);
+  const sections = [
+    "<b>🚢 Бункер</b>\n<i>— нет упоминаний за сутки</i>",
+    "<b>🛢 Масла</b>\n<i>— нет упоминаний за сутки</i>",
+    "<b>✈️ Керосин</b>\n<i>— нет упоминаний за сутки</i>",
+    "<b>⚗️ Нефтехимия</b>\n<i>— нет упоминаний за сутки</i>",
+    "<b>🛣 Битум</b>\n<i>— нет упоминаний за сутки</i>",
+    "<b>🏢 Упоминания компаний</b>\n<i>— нет упоминаний за сутки</i>",
+  ];
+  return header + sections.join("\n\n");
+}
+
+// =============================================================================
+// composeWebDigest — D-12: вставить web-заголовок (D-10/D-11) в начало body
+// от summarize().html, заменив TG-заголовок «Нефтегаз — {date}» который рендерит renderHtml().
+// summarize() возвращает полный HTML с шапкой; нам нужен body без неё, плюс свой web-header.
+// Стратегия: split по первому `\n\n` (граница header→body в renderHtml), отбрасываем первую часть.
+//
+// EXPORTED (не private) — чтобы Plan 04 unit-тестами зафиксировал контракт:
+//   (1) результат начинается с web-header,
+//   (2) body секций сохраняется,
+//   (3) TG-заголовок «Нефтегаз —» НЕ присутствует.
+// Если будущий рефактор summarize.renderHtml изменит структуру — тест поломается заметно
+// (а не silent breakage в проде).
+// =============================================================================
+export function composeWebDigest(summarizedHtml: string, succeeded: number, total: number): string {
+  // renderHtml формат (summarize.ts:199-226): "<b>...</b>\n<i>...</i>\n\n<b>🚢 Бункер</b>..." — отделяем body после первого `\n\n`.
+  const sep = "\n\n";
+  const idx = summarizedHtml.indexOf(sep);
+  const body = idx >= 0 ? summarizedHtml.slice(idx + sep.length) : summarizedHtml;
+  return buildWebHeader(succeeded, total) + body;
+}
+
+// =============================================================================
+// runWebPipeline — D-06: точка входа для tick(). Возвращает WebRunSummary.
+// Контракт: НЕ throw на per-site fail (Promise.allSettled), throw только на катастрофу
+// (broken websites.json, summarize() crash). tick() обернёт в try/catch (см. Plan 03).
+// =============================================================================
+export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
+  const errors: string[] = [];
+
+  const websites = loadWebsites();
+  log.info(`[web-scraper] runId=${runId} websites=${websites.length}`);
+
+  // D-15: параллельный fetch через Promise.allSettled — изолирует одиночные падения.
+  const results = await Promise.allSettled(
+    websites.map(async (site) => {
+      const html = await fetchSite(site.url);
+      const text = extractText(html);
+      return { site, text };
+    })
+  );
+
+  const posts: Post[] = [];
+  let websitesSkipped = 0;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
+    const site = websites[i]!;
+    if (r.status === "rejected") {
+      // D-18: no retry — log + skip + counter.
+      const msg = (r.reason as Error)?.message ?? String(r.reason);
+      log.warn(`[web-scraper] ${site.url}: ${msg}`);
+      errors.push(`${site.url}: ${msg}`);
+      websitesSkipped++;
+      continue;
+    }
+    const post = siteToPost(site, r.value.text);
+    if (post === null) {
+      // D-05: text too short — already logged inside siteToPost.
+      websitesSkipped++;
+      continue;
+    }
+    posts.push(post);
+  }
+
+  const websitesSucceeded = posts.length;
+  log.info(
+    `[web-scraper] runId=${runId} succeeded=${websitesSucceeded} skipped=${websitesSkipped}`
+  );
+
+  // D-20 step 1: пишем raw СРАЗУ, ДО summarize/dedup/LLM (инвариант «сырое сохранено»).
+  writeRawWeb(posts, runId);
+
+  let digestDelivered = false;
+  let itemsDropped = 0;
+
+  // D-13 (technical fail): все сайты пропустились — placeholder + alert.
+  if (websitesSucceeded === 0 && websites.length > 0) {
+    const placeholder = buildPlaceholderHtml(websites.length);
+    log.warn(
+      `[web-scraper] runId=${runId} all ${websites.length} sites skipped or failed — sending placeholder`
+    );
+    await sendToChannel(placeholder);
+    writeOutputWeb(placeholder, runId);
+    digestDelivered = true;
+    // Параллельный alert оператору в личку.
+    try {
+      await sendAlert({
+        stage: "web",
+        message: `all ${websites.length} sites skipped or failed`,
+        runId,
+      });
+    } catch (alertErr) {
+      log.error("[web-scraper] alert send failed", alertErr);
+    }
+  } else if (websitesSucceeded > 0) {
+    // D-19: summarize() переиспользуется как есть, verifyExtractiveness внутри.
+    const { html, postsDropped } = await summarize(posts);
+    itemsDropped = postsDropped;
+
+    // D-14 (content miss): LLM ничего не нашёл — silence в канале.
+    // summarize() возвращает HTML с пустыми секциями всегда; нам нужно отличить
+    // «есть items» от «все пустые». Проверяем наличие `• ` в html (буллет item'а).
+    const hasAnyItem = html.includes("• ");
+    if (!hasAnyItem) {
+      log.info(
+        `[web-scraper] runId=${runId} no relevant content — silence in channel (D-14)`
+      );
+    } else {
+      const finalHtml = composeWebDigest(html, websitesSucceeded, websites.length);
+      await sendToChannel(finalHtml);
+      writeOutputWeb(finalHtml, runId);
+      digestDelivered = true;
+      log.info(`[web-scraper] runId=${runId} web-digest delivered`);
+    }
+  } else {
+    // websites.length === 0 — schema gate (.min(1)) этого не допускает, но для безопасности.
+    log.info(`[web-scraper] runId=${runId} no websites configured — skipping`);
+  }
+
+  const finishedAt = new Date().toISOString();
+  return {
+    runId,
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - startMs,
+    websitesTotal: websites.length,
+    websitesSucceeded,
+    websitesSkipped,
+    itemsCollected: websitesSucceeded,
+    itemsDropped,
+    digestDelivered,
+    errors,
+  };
+}
