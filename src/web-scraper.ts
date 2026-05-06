@@ -60,11 +60,14 @@ export async function fetchSite(url: string, timeoutMs?: number): Promise<string
   const userAgent = process.env.WEB_USER_AGENT ?? DEFAULT_USER_AGENT;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
+  const startMs = Date.now();
+  log.info(`[web-scraper] fetch start: ${url} (timeout=${ms}ms)`);
   try {
     let currentUrl = url;
     if (!isSafePublicUrl(currentUrl)) {
       throw new Error(`unsafe url (private/loopback/non-http): ${currentUrl}`);
     }
+    let redirects = 0;
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
       const res = await fetch(currentUrl, {
         method: "GET",
@@ -86,13 +89,23 @@ export async function fetchSite(url: string, timeoutMs?: number): Promise<string
         if (hop === MAX_REDIRECT_HOPS) {
           throw new Error(`too many redirects (${MAX_REDIRECT_HOPS + 1}) starting from ${url}`);
         }
+        log.info(
+          `[web-scraper] fetch redirect ${hop + 1}: HTTP ${res.status} ${currentUrl} → ${nextUrl}`
+        );
         currentUrl = nextUrl;
+        redirects++;
         continue;
       }
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
-      return await res.text();
+      const text = await res.text();
+      const dur = Date.now() - startMs;
+      const ctype = res.headers.get("content-type") ?? "(no content-type)";
+      log.info(
+        `[web-scraper] fetch ok: ${url} HTTP ${res.status} ${text.length}ch ${dur}ms type="${ctype}"${redirects > 0 ? ` (${redirects} redirects)` : ""}`
+      );
+      return text;
     }
     // Недостижимо: цикл либо return'ит, либо throw'ит.
     throw new Error(`fetchSite: redirect loop exit without response (${url})`);
@@ -108,18 +121,21 @@ export async function fetchSite(url: string, timeoutMs?: number): Promise<string
 // =============================================================================
 export function extractText(html: string): string {
   const $ = cheerio.load(html);
+  const htmlSize = html.length;
   // D-02: cleanup ДО select. Удаляем меню/футеры/JS-мусор.
   $("script, style, noscript, nav, header, footer, aside, iframe").remove();
 
   // D-01: cascade-селектор.
   const selectors = ['[role="main"]', "article", "main", ".post-content", ".entry-content", "body"];
   let raw = "";
+  let usedSelector = "(none)";
   for (const sel of selectors) {
     const el = $(sel).first();
     if (el.length === 0) continue;
     const t = el.text();
     if (t && t.trim().length > 0) {
       raw = t;
+      usedSelector = sel;
       break;
     }
   }
@@ -127,13 +143,23 @@ export function extractText(html: string): string {
   // Normalize: collapse all whitespace to single spaces.
   const normalized = raw.replace(/\s+/g, " ").trim();
 
+  if (normalized.length === 0) {
+    log.warn(
+      `[web-scraper] extractText: empty result (html=${htmlSize}ch, no selector matched non-empty text)`
+    );
+    return normalized;
+  }
+
   // D-04: hard cap 8000 chars.
   if (normalized.length > TEXT_CAP_CHARS) {
     log.info(
-      `[web-scraper] text capped from ${normalized.length} to ${TEXT_CAP_CHARS} chars`
+      `[web-scraper] extractText: selector="${usedSelector}" html=${htmlSize}ch text=${normalized.length}ch (capped to ${TEXT_CAP_CHARS})`
     );
     return normalized.slice(0, TEXT_CAP_CHARS);
   }
+  log.info(
+    `[web-scraper] extractText: selector="${usedSelector}" html=${htmlSize}ch text=${normalized.length}ch`
+  );
   return normalized;
 }
 
@@ -251,14 +277,30 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
   const errors: string[] = [];
 
   const websites = loadWebsites();
-  log.info(`[web-scraper] runId=${runId} websites=${websites.length}`);
+  log.info(`[web-scraper] runId=${runId} websites=${websites.length} starting parallel fetch`);
 
   // D-15: параллельный fetch через Promise.allSettled — изолирует одиночные падения.
+  // Per-site progress лог печатается из самой задачи — порядок завершения зависит от latency,
+  // что и ожидается при параллельной выгрузке.
+  const total = websites.length;
+  let completed = 0;
   const results = await Promise.allSettled(
-    websites.map(async (site) => {
-      const html = await fetchSite(site.url);
-      const text = extractText(html);
-      return { site, text };
+    websites.map(async (site, idx) => {
+      log.info(`[web-scraper] [${idx + 1}/${total}] start: ${site.url}`);
+      try {
+        const html = await fetchSite(site.url);
+        const text = extractText(html);
+        completed++;
+        log.info(
+          `[web-scraper] [${completed}/${total}] done: ${site.url} text=${text.length}ch`
+        );
+        return { site, text };
+      } catch (err) {
+        completed++;
+        const msg = (err as Error)?.message ?? String(err);
+        log.warn(`[web-scraper] [${completed}/${total}] fail: ${site.url} — ${msg}`);
+        throw err;
+      }
     })
   );
 
@@ -268,9 +310,8 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
     const r = results[i]!;
     const site = websites[i]!;
     if (r.status === "rejected") {
-      // D-18: no retry — log + skip + counter.
+      // D-18: no retry — лог уже напечатан внутри map-задачи, тут только counter + errors[].
       const msg = (r.reason as Error)?.message ?? String(r.reason);
-      log.warn(`[web-scraper] ${site.url}: ${msg}`);
       errors.push(`${site.url}: ${msg}`);
       websitesSkipped++;
       continue;

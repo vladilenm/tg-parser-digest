@@ -42,8 +42,10 @@ async function tick(): Promise<void> {
         }
         throw e;
       }
+      log.info(`[tick] runId=${runId} jitter complete — starting pipelines`);
 
       // ---- D-06: TG-pipeline (existing, unchanged behavior) ----
+      log.info(`[tick] runId=${runId} ─── TG pipeline ───`);
       try {
         const summary = await runPipeline(runId);
         logRunSummary(summary);
@@ -64,6 +66,7 @@ async function tick(): Promise<void> {
       }
 
       // ---- D-08: Web-pipeline стартует НЕЗАВИСИМО от TG (даже если TG упал) ----
+      log.info(`[tick] runId=${runId} ─── Web pipeline ───`);
       try {
         const webSummary = await runWebPipeline(runId);
         logWebRunSummary(webSummary);

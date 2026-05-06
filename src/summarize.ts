@@ -495,6 +495,12 @@ export async function summarize(
   const baseURL = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
   const model = process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
 
+  const startedAt = Date.now();
+  const totalChars = posts.reduce((s, p) => s + p.text.length, 0);
+  log.info(
+    `[summarize] start: posts=${posts.length} totalChars=${totalChars} model=${model} baseURL=${baseURL}`
+  );
+
   // Shared client — connection pooling across all LLM calls
   const client = new OpenAI({ apiKey, baseURL, timeout: 120_000, maxRetries: 1 });
 
@@ -606,5 +612,8 @@ export async function summarize(
     verifiedDigest.bitumen.length +
     verifiedDigest.mentions.length;
 
+  log.info(
+    `[summarize] done: posts=${posts.length} → items=${itemsCount} dropped=${droppedCount} html=${html.length}ch in ${Date.now() - startedAt}ms`
+  );
   return { html, postsDropped: droppedCount, itemsCount };
 }

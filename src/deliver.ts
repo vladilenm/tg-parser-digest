@@ -1,6 +1,8 @@
 // src/deliver.ts — доставка HTML-дайджеста в приватный Telegram-канал через Bot API.
 // Использует встроенный fetch (Node 20.6+), без каких-либо SDK.
 
+import { log } from "./logger.js";
+
 const TELEGRAM_LIMIT = 4096;
 const CHUNK_SAFE_LIMIT = 4000; // запас ~96 символов на префикс "(i/N)\n" + заголовки тегов
 
@@ -53,6 +55,9 @@ export async function sendToChannel(html: string): Promise<void> {
   if (!chatId) throw new Error("TG_CHANNEL_ID не задан.");
 
   const parts = chunkHtml(html, CHUNK_SAFE_LIMIT);
+  log.info(
+    `[deliver] sendToChannel: chatId=${chatId} html=${html.length}ch parts=${parts.length}`
+  );
   for (let i = 0; i < parts.length; i++) {
     const text = parts.length > 1 ? `(${i + 1}/${parts.length})\n${parts[i]}` : parts[i];
 
@@ -69,6 +74,7 @@ export async function sendToChannel(html: string): Promise<void> {
       parse_mode: "HTML",
       disable_web_page_preview: true,
     };
+    const startedAt = Date.now();
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -77,7 +83,13 @@ export async function sendToChannel(html: string): Promise<void> {
     if (!res.ok) {
       // DELIVER-04: HTTP-статус + тело ответа.
       const responseBody = await res.text();
+      log.error(
+        `[deliver] sendMessage FAILED part ${i + 1}/${parts.length}: HTTP ${res.status} ${responseBody.slice(0, 300)}`
+      );
       throw new Error(`Telegram sendMessage failed: ${res.status} ${responseBody}`);
     }
+    log.info(
+      `[deliver] part ${i + 1}/${parts.length} sent (${text.length}ch in ${Date.now() - startedAt}ms)`
+    );
   }
 }

@@ -54,24 +54,32 @@ export async function runPipeline(runId: string): Promise<RunSummary> {
   try {
     for (let i = 0; i < channels.length; i++) {
       const { username } = channels[i]!;
+      log.info(`[pipeline] [${i + 1}/${channels.length}] start: ${username}`);
+      const startedAt = Date.now();
       try {
         const fetched = await fetchLast24h(client, username, { limit, windowHours });
+        let dupInChannel = 0;
         for (const post of fetched) {
           const key = `${post.channelUsername}:${post.messageId}`;
           if (seen.has(key)) {
             postsDeduped++;
+            dupInChannel++;
             continue;
           }
           seen.add(key);
           allPosts.push(post);
         }
         channelsSucceeded++;
-        log.info(`[pipeline] ${username}: ${fetched.length} постов`);
+        log.info(
+          `[pipeline] [${i + 1}/${channels.length}] done: ${username} fetched=${fetched.length}` +
+            (dupInChannel > 0 ? ` (deduped=${dupInChannel})` : "") +
+            ` in ${Date.now() - startedAt}ms`
+        );
       } catch (err) {
         channelsSkipped++;
         const msg = (err as Error)?.message ?? String(err);
         errors.push(`${username}: ${msg}`);
-        log.warn(`[pipeline] channel skipped: ${username} — ${msg}`);
+        log.warn(`[pipeline] [${i + 1}/${channels.length}] skip: ${username} — ${msg}`);
       }
       if (i < channels.length - 1) {
         // ANTIBAN: широкий jitter (0–2500 мс) — убираем равномерный rate-pattern.
