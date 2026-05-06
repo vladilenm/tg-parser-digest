@@ -371,9 +371,20 @@ export async function handleCallbackQuery(
   const messageId = cb.message.message_id;
 
   // ack callback (обязательно в течение 15 мин — иначе клиент покажет loading).
-  await tgFetch<{ ok: boolean }>(token, "answerCallbackQuery", {
-    callback_query_id: cb.id,
-  });
+  // WR-02: ack лучший-effort, его сетевая ошибка не должна срывать removeChannel
+  // ниже. Если сеть нестабильна и ack падает — продолжаем основное действие,
+  // иначе пользователь нажимает кнопку, видит, что ничего не произошло, и кнопки
+  // остаются — повторное нажатие приводит к тому же результату при flaky-сети.
+  try {
+    await tgFetch<{ ok: boolean }>(token, "answerCallbackQuery", {
+      callback_query_id: cb.id,
+    });
+  } catch (err) {
+    log.warn(
+      `[bot] answerCallbackQuery failed: ${(err as Error).message}`
+    );
+    // продолжаем — ack лучший-effort, основная операция (mutate + edit) ниже.
+  }
 
   let newText: string;
   if (action === "cancel") {
