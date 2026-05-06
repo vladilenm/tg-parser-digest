@@ -1,6 +1,6 @@
 # tg-parser-demo — как это работает и как настроить
 
-Документ для оператора: объяснение системы простыми словами, защита от бана, пошаговая первичная настройка и правила работы с `channels.yaml`.
+Документ для оператора: объяснение системы простыми словами, защита от бана, пошаговая первичная настройка и правила работы с `channels.json`.
 
 ---
 
@@ -11,7 +11,7 @@
 ### 1. Читает каналы (MTProto, user-аккаунт)
 Файл: [src/run.ts:39-65](../src/run.ts#L39-L65)
 
-Парсит [channels.yaml](../channels.yaml), подключается к Telegram через GramJS под твоим личным аккаунтом (не ботом — бот не может читать чужие каналы) и по очереди обходит список. Для каждого канала берёт последние 50 сообщений за 24 часа — [src/telegram.ts:61-101](../src/telegram.ts#L61-L101).
+Парсит [channels.json](../channels.json), подключается к Telegram через GramJS под твоим личным аккаунтом (не ботом — бот не может читать чужие каналы) и по очереди обходит список. Для каждого канала берёт последние 50 сообщений за 24 часа — [src/telegram.ts:61-101](../src/telegram.ts#L61-L101).
 
 ### 2. Отдаёт всё в DeepSeek одним батчем
 Файл: [src/summarize.ts:192-232](../src/summarize.ts#L192-L232)
@@ -95,7 +95,7 @@ npm run login
 
 ### Шаг 3. Подписаться на каналы
 
-Открой Telegram под тем же номером, под которым делал `npm run login`, и **подпишись вручную** на все каналы из [channels.yaml](../channels.yaml). Если не подписан — скрипт выкинет `ChannelPrivateError` и канал пропустится ([src/telegram.ts:114-124](../src/telegram.ts#L114-L124)).
+Открой Telegram под тем же номером, под которым делал `npm run login`, и **подпишись вручную** на все каналы из [channels.json](../channels.json). Если не подписан — скрипт выкинет `ChannelPrivateError` и канал пропустится ([src/telegram.ts:114-124](../src/telegram.ts#L114-L124)).
 
 ### Шаг 4. Первый прогон
 
@@ -107,16 +107,17 @@ npm start
 
 ---
 
-## Как правильно заполнять `channels.yaml`
+## Как правильно заполнять `channels.json`
 
-Формат предельно простой — [channels.yaml](../channels.yaml):
+Формат предельно простой — [channels.json](../channels.json):
 
-```yaml
-channels:
-  - username: "neftegazru"
-    priority: 1
-  - username: "oilcapital"
-    priority: 3
+```json
+{
+  "channels": [
+    { "username": "neftegazru" },
+    { "username": "oilcapital" }
+  ]
+}
 ```
 
 ### Правила
@@ -124,7 +125,7 @@ channels:
 1. **Только `username` публичного канала** — то, что идёт после `t.me/` или `@` в Telegram. Для канала `https://t.me/neftegazru` username = `neftegazru`.
 2. **Без `@`, без ссылок, без `t.me/`** — только чистый username в кавычках.
 3. **Только публичные каналы.** Приватные по invite-link (`t.me/+AbC123...`) **не поддерживаются** — см. [README.md](../README.md).
-4. **Поле `priority`** — зарезервировано, в MVP не используется. Можно ставить любое число или вообще опустить (валидатор [src/run.ts:20-37](../src/run.ts#L20-L37) требует только `username`).
+4. **Схема — только `{ "username": "..." }`** — других полей нет (поле `priority` удалено как неиспользуемое; валидатор `ChannelEntrySchema` в [src/channels-store.ts](../src/channels-store.ts) требует только `username`).
 5. **10–15 каналов** — рекомендованный объём. Больше — риск FloodWait, больше расход токенов DeepSeek.
 6. **Ты должен быть подписан** на каждый канал тем же аккаунтом, что в `TG_SESSION`. Иначе пропуск с warning.
 
@@ -132,10 +133,9 @@ channels:
 
 1. Найди его в Telegram, убедись что он публичный (есть `@username`).
 2. Подпишись своим аккаунтом.
-3. Допиши в `channels.yaml`:
-   ```yaml
-     - username: "my_new_channel"
-       priority: 2
+3. Допиши в `channels.json` (не забыть запятую после предыдущего объекта в массиве `channels`):
+   ```json
+   { "username": "my_new_channel" }
    ```
 4. Сохрани, запусти `npm start`.
 

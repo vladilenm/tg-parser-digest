@@ -1,5 +1,5 @@
 // src/telegram.ts — GramJS user-client с anti-ban identity + fetchLast24h.
-// Идентичность клиента (D-06, D-07): захардкожена здесь, НЕ в .env и НЕ в channels.yaml.
+// Идентичность клиента (D-06, D-07): захардкожена здесь, НЕ в .env и НЕ в channels.json.
 
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";

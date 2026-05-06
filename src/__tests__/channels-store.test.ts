@@ -85,7 +85,7 @@ describe("loadChannels (STORE-01)", () => {
   });
 
   it("throws если channels.json отсутствует — никакого YAML-фоллбека", () => {
-    // tmpdir пустой; никакого channels.json (и никакого channels.yaml — он больше не используется).
+    // tmpdir пустой; никакого channels.json — фоллбек был удалён в quick-260506-dht.
     expect(() => loadChannels()).toThrow(/channels\.json not found/);
   });
 });

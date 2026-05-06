@@ -15,12 +15,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev=false
 
-# Копируем ровно то, что нужно рантайму. channels.yaml — дефолт-список;
-# при необходимости оператор может прокинуть prod-channels.yaml через bind mount на Timeweb.
+# Копируем ровно то, что нужно рантайму. channels.json — дефолт-список;
+# при необходимости оператор может прокинуть prod-channels.json через bind mount на Timeweb.
 COPY tsconfig.json ./
 COPY src ./src
 COPY scripts ./scripts
-COPY channels.yaml ./
+COPY channels.json ./
 
 # Каталог для архивов прогонов (data/raw, data/output, data/dedup-cache).
 # На Timeweb сюда подключается persistent volume через UI; локально — bind mount из docker-compose.

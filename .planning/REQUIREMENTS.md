@@ -10,7 +10,7 @@ Requirements for milestone v4.0 «Управление каналами + пар
 
 ### Channel Management (BOT)
 
-- [ ] **BOT-01**: Оператор/Заказчик может просмотреть текущий список каналов через `/channels` (username + priority)
+- [ ] **BOT-01**: Оператор/Заказчик может просмотреть текущий список каналов через `/channels` (username)
 - [ ] **BOT-02**: Оператор/Заказчик может добавить канал через `/add_channel <username>` с валидацией username
 - [ ] **BOT-03**: Оператор/Заказчик может удалить канал через `/remove_channel <username>` с inline-подтверждением
 - [ ] **BOT-04**: Бот отвечает только пользователям из allowlist (`BOT_ALLOWED_USER_IDS` в env)
@@ -18,9 +18,9 @@ Requirements for milestone v4.0 «Управление каналами + пар
 
 ### Storage Migration (STORE)
 
-- [ ] **STORE-01**: `channels.yaml` мигрирован в `channels.json`; pipeline читает каналы из JSON
+- [ ] **STORE-01**: Каналы хранятся в `channels.json`; pipeline читает каналы из JSON (миграция с YAML завершена и YAML удалён)
 - [ ] **STORE-02**: Атомарная запись `channels.json` через `.tmp + rename` с in-process mutex
-- [ ] **STORE-03**: Auto-migration при старте daemon (если `channels.json` отсутствует — конвертирует из YAML)
+- [ ] **STORE-03**: ~~Auto-migration при старте daemon~~ — OBSOLETE: миграция выполнена post-hoc, YAML-фоллбек удалён в quick-260506-dht.
 
 ### Web Scraping (WEB)
 
