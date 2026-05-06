@@ -1,10 +1,11 @@
 ---
 phase: 03-web-scraping
-reviewed: 2026-05-06T00:00:00Z
+reviewed: 2026-05-06T19:30:00Z
 depth: standard
 files_reviewed: 13
 files_reviewed_list:
   - README.md
+  - package-lock.json
   - package.json
   - scripts/run-once.ts
   - src/__tests__/archive-web.test.ts
@@ -18,438 +19,316 @@ files_reviewed_list:
   - src/web-scraper.ts
   - websites.json
 findings:
-  critical: 1
-  warning: 9
-  info: 5
-  total: 15
+  critical: 0
+  warning: 2
+  info: 4
+  total: 6
 status: issues_found
 ---
 
-# Phase 3: Code Review Report
+# Phase 3: Code Review Report (Re-review after auto-fix)
 
-**Reviewed:** 2026-05-06
+**Reviewed:** 2026-05-06T19:30:00Z
 **Depth:** standard
 **Files Reviewed:** 13
-**Status:** issues_found
+**Status:** issues_found (minor)
 
 ## Summary
 
-Phase 3 (web-scraping) добавил параллельный web-pipeline (`src/web-scraper.ts`),
-архивные функции `writeRawWeb`/`writeOutputWeb`, `WebRunSummary` и `logWebRunSummary`,
-и интегрировал всё в `tick()` (`src/run.ts`). Корневые принципы — изоляция web от TG
-(независимые try/catch в tick), Promise.allSettled для per-site fail isolation, Zod-валидация
-`websites.json` — реализованы корректно.
+Re-review подтверждает: auto-fix pass корректно закрыл **CR-01 (SSRF)** и все 9 warnings
+из первого review. Шесть исправляющих коммитов (`22c9adc`, `84fcc3c`, `434f99a`, `c7ed0ba`,
+`0e14a96`, `a23613b`) применены аккуратно, без широких регрессий.
 
-Найдено **1 критическая проблема (SSRF-риск)**, **9 warnings** (преимущественно: hard-coded
-hrupkij контракт между web-scraper и summarize, документ-рассинхрон README с реальным кодом,
-graceful shutdown не отменяет jitter-sleep) и **5 info-замечаний** (дублирование кода,
-устаревшие комментарии).
+**Что верифицировано как закрытое:**
 
-Тесты (`web-scraper.test.ts`, `archive-web.test.ts`) хорошо покрывают unit-уровень:
-extractText cascade/cleanup, siteToPost boundary, loadWebsites Zod-throws, fetchSite mock,
-composeWebDigest split-contract, archive-web write/overwrite. Слабое место — нет теста
-на silent-disable web-дайджеста (см. WR-04).
+- **CR-01 (SSRF)** — закрыто двумя слоями: `WebsiteEntrySchema` теперь применяет `isSafePublicUrl`
+  refinement (`schema.ts:70-104`) с denylist privatе-network/loopback/link-local hostname'ов;
+  `fetchSite` использует `redirect: "manual"` + ручную revalidation `Location` через
+  `isSafePublicUrl` на каждом hop'е (`web-scraper.ts:58-101`), с лимитом `MAX_REDIRECT_HOPS=5`.
+  WR-07 (open-redirect chain) — той же change.
+- **WR-01** — `activeAbort: AbortController` хранится module-level (`run.ts:18`),
+  `abortableSleep()` корректно abort'ит timer и снимает listener (`run.ts:111-127`),
+  `shutdown()` вызывает `activeAbort?.abort()` (`run.ts:168`), tick распознаёт
+  `e.message === "shutdown"` и тихо `return`'ит (`run.ts:39-42`).
+- **WR-02 / WR-03 / WR-06** — README §2 синхронизирован с `package.json` (5 dep'ов,
+  включая `cheerio`); `channels.yaml` → `channels.json` везде; пример `[summary]` log'а
+  теперь содержит `dropped=K` с описанием.
+- **WR-04** — `summarize()` возвращает структурированный `{ html, postsDropped, itemsCount }`
+  (`summarize.ts:609`); `web-scraper.ts:321-325` переключился на `if (itemsCount === 0)` вместо
+  `html.includes("• ")`. Старый bullet-grep исчез. `pipeline.ts:103` корректно игнорирует
+  лишнее поле через partial destructuring — TG-pipeline не сломался.
+- **WR-05** — `formatDateRu` в `web-scraper.ts:184` теперь явно `timeZone: "Europe/Moscow"`,
+  совпадает с `archive.ts:21` и устраняет рассинхрон файла и контента под Docker (TZ=UTC).
+- **WR-08** — defensive shallow copy `[...loadChannels()]` в `pipeline.ts:28`. Для Fisher-Yates
+  достаточно (мутируем только positional slots). Подтверждено, что `loadChannels()` возвращает
+  `validated.channels` от Zod parse — формально fresh array, но защитная копия страхует
+  от рефактора channels-store с кэшем.
+- **WR-09** — outer try/catch в `tick()` (`run.ts:31-100`) ловит любую ошибку из jitter/TG/web
+  блоков и шлёт `sendAlert({ stage: "tick" })`. `isRunning=false` всегда сбрасывается через
+  `finally`. Утечки `isRunning=true` навсегда теперь не случится.
+- Все 5 info-замечаний (IN-01..IN-05) сохраняют статус: либо невалидны
+  (cheerio дублирование formatDateRu — оставлено осознанно), либо требуют
+  больше work, чем стоит (рефактор process.chdir в тестах).
 
-## Critical Issues
+**Новых критических проблем не найдено.** Найдено 2 warnings и 4 info-замечания, в основном
+о хрупкой строковой сравнении и edge-case redirect counting — все либо unlikely в проде,
+либо имеют минимальный blast radius.
 
-### CR-01: SSRF-вектор через `websites.json` — Zod валидирует только URL-формат, не protocol/host
-
-**File:** `src/schema.ts:67-74`, `src/web-scraper.ts:33-46`
-**Issue:** `WebsiteEntrySchema.url` использует `z.string().url()`, который пропускает любую
-синтаксически валидную URL — в том числе `http://169.254.169.254/latest/meta-data/`
-(AWS/GCP/Timeweb cloud metadata), `http://localhost:6379/`, `http://127.0.0.1/`,
-`file:///etc/passwd`, `gopher://...` и т.п.
-
-Комментарий в `schema.ts:65` прямо называет это «security threat T-03-01 SSRF», но текущая
-проверка от SSRF не защищает — она блокирует только `"not-a-url"` строки. Атакующий с правом
-редактировать `websites.json` (PR-merge, supply-chain, скомпрометированный VDS) может натравить
-ежедневный fetch на внутренние ресурсы. На Timeweb VDS это особенно опасно — cloud
-metadata-endpoint обычно доступен по `169.254.169.254` без аутентификации.
-
-Дополнительно: `fetchSite` использует `redirect: "follow"` (line 62), значит даже валидный
-public URL может перенаправить на private-network адрес (open-redirect chain).
-
-**Fix:** Добавить allowlist protocol + denylist private-network в Zod refinement:
-
-```typescript
-// src/schema.ts
-const PRIVATE_HOSTS = [
-  /^localhost$/i,
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^169\.254\./,
-  /^::1$/,
-  /^fc00:/i,
-  /^fd00:/i,
-];
-
-export const WebsiteEntrySchema = z.object({
-  url: z
-    .string()
-    .url()
-    .refine(
-      (u) => {
-        try {
-          const parsed = new URL(u);
-          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-          if (PRIVATE_HOSTS.some((re) => re.test(parsed.hostname))) return false;
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { message: "url must be http(s) and not private-network" }
-    ),
-  name: z.string().min(1).optional(),
-});
-```
-
-И сменить `redirect: "follow"` на `redirect: "manual"` в `fetchSite` либо после редиректа
-повторно валидировать `Location` через ту же функцию.
+Тестовое покрытие осталось на прежнем уровне (26 it-кейсов в двух файлах). Тесты для
+abortable jitter-sleep и outer tick try/catch (WR-01 / WR-09) — не добавлены; см. WR-NEW-01.
 
 ## Warnings
 
-### WR-01: Graceful shutdown не abort'ит jitter-sleep — daemon может висеть до 30 мин после SIGINT
+### WR-NEW-01: `tick()` распознаёт shutdown по `error.message === "shutdown"` — хрупкий sentinel
 
-**File:** `src/run.ts:25-27`, `src/run.ts:107-125`
-**Issue:** В `tick()` jitter-окно реализовано как `await new Promise((r) => setTimeout(r, jitterMs))`
-длительностью 0-30 минут. `setTimeout` не abort'ится при `task.stop()`. Если SIGINT прилетит
-во время jitter-сна, `isRunning=true` (выставлено на line 20), shutdown-loop (line 121-123)
-будет крутиться, ожидая `isRunning=false`. Но pipeline ещё даже не стартовал — он стартует
-через `jitterMs - elapsed` миллисекунд **после** получения сигнала. PM2 `kill_timeout: 180000`
-(3 минуты, README §«Запуск VPS») не покрывает 30-минутный jitter — PM2 пошлёт SIGKILL и
-прервёт прогон в середине, потенциально оставив `data/raw/*.json` без `data/output/*.md`.
-
-**Fix:** Хранить `AbortController` в module-level, abort'ить в `shutdown()` и проверять
-после sleep:
+**File:** `src/run.ts:39-44`, `src/run.ts:111-127`
+**Issue:** `abortableSleep` бросает `new Error("shutdown")`, и `tick()` распознаёт его так:
 
 ```typescript
-let activeAbort: AbortController | null = null;
-
-async function tick() {
-  if (isRunning) { ... }
-  isRunning = true;
-  activeAbort = new AbortController();
-  try {
-    const jitterMs = Math.floor(Math.random() * 30 * 60 * 1000);
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(resolve, jitterMs);
-      activeAbort!.signal.addEventListener("abort", () => {
-        clearTimeout(t);
-        reject(new Error("shutdown"));
-      });
-    });
-    // ... rest of tick
-  } catch (e) {
-    if ((e as Error).message === "shutdown") {
-      log.info("[tick] aborted during jitter sleep");
-      return;
-    }
-    throw e;
-  } finally {
-    isRunning = false;
-    activeAbort = null;
+} catch (e) {
+  if ((e as Error).message === "shutdown") {
+    log.info(`[tick] runId=${runId} aborted during jitter sleep`);
+    return;
   }
-}
-
-const shutdown = async (signal: string) => {
-  log.info(`received ${signal}, stopping cron and bot`);
-  task.stop();
-  activeAbort?.abort();
-  // ... existing logic
-};
-```
-
-### WR-02: `package.json` рассинхронизирован с README — `yaml` декларирован в README, но удалён из deps; `cheerio` в deps, но не упомянут
-
-**File:** `README.md:26`, `package.json:16-22`
-**Issue:** README §2 говорит:
-> Будет установлено пять runtime-зависимостей: `telegram`, `openai`, `yaml`, `node-cron`, `zod`.
-
-Реальный `package.json`:
-- `cheerio` ^1.0.0 — НЕ упомянут в README §2
-- `node-cron` ^3.0.3 — упомянут
-- `openai` ^4.0.0 — упомянут
-- `telegram` ^2.22.0 — упомянут
-- `zod` ^3.23.0 — упомянут
-- `yaml` — отсутствует, но упомянут в README
-
-Phase 3 добавил cheerio (нужен для extractText), но README не обновлён.
-Также README §«Структура проекта» (line 460-487) ссылается на `channels.yaml`, хотя
-`pipeline.ts:7` импортирует `channels-store.ts` (`channels.json` + auto-migration).
-
-**Fix:** Обновить README §2 на актуальный список:
-```
-Будет установлено пять runtime-зависимостей: `telegram`, `openai`, `cheerio`, `node-cron`, `zod`.
-```
-И §«Структура проекта»: `channels.yaml` → `channels.json` (с пометкой про auto-migration).
-
-### WR-03: README §«Деплой VDS Шаг 4» показывает неправильный cron-schedule
-
-**File:** `README.md:340`
-**Issue:** Документация говорит:
-> Проверь, что в логах есть `daemon started, schedule: 0 20 * * * Europe/Moscow`
-
-Реальный код (`src/run.ts:76-77`):
-```typescript
-const task = cron.schedule("15 20 * * *", tick, ...);
-log.info("daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter");
-```
-
-То есть лог будет `15 20`, а не `0 20`. Оператор, проверяющий по чек-листу README, может
-ошибочно думать что daemon настроен неправильно (и наоборот, при опечатке cron на `0 20`
-не заметит проблемы).
-
-**Fix:** Обновить README:
-```
-Проверь, что в логах есть `daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter`
-```
-
-### WR-04: `hasAnyItem` детектит наличие items по hard-coded `"• "` — silent breakage при изменении bullet-символа
-
-**File:** `src/web-scraper.ts:288-294`
-**Issue:**
-```typescript
-const hasAnyItem = html.includes("• ");
-if (!hasAnyItem) {
-  log.info(`[web-scraper] runId=${runId} no relevant content — silence in channel (D-14)`);
-} else {
-  // send digest
+  throw e;
 }
 ```
 
-Это хрупкий cross-module контракт с `summarize.renderHtml` — если рефактор сменит bullet
-с `• ` на `– `/`*`/inline-теги, `hasAnyItem` всегда вернёт `false`, и web-дайджест
-перестанет уходить **молча, без alert**. Тестов на этот контракт нет (в отличие от D-12
-contract в `composeWebDigest`).
+Сравнение по `.message` — антипаттерн Node.js: при любом рефакторе `abortableSleep`
+(капитализация, локализация, замена на стандартный `AbortError` через
+`new DOMException("aborted", "AbortError")`) ветка `return` тихо перестанет срабатывать.
+shutdown снова будет ждать pipeline (которого нет), а лог будет говорить, что прогон упал.
 
-Дополнительно: `composeWebDigest` уже фиксирует похожий контракт `\n\n` separator с
-тестом-anchor'ом (`web-scraper.test.ts:249-282`), но `hasAnyItem` такого anchor'а не имеет.
+Дополнительно — Node.js native fetch при abort бросает `DOMException("This operation was
+aborted", "AbortError")`, а не `Error("shutdown")`. Если бы `abortableSleep` использовал
+`signal` напрямую (что было бы идиоматично), `error.name === "AbortError"` был бы
+правильной проверкой; сейчас же используется самодельный sentinel-string.
 
-**Fix:** Возвращать структурированный сигнал из `summarize()` вместо string-grep:
+**Fix:** Использовать sentinel-class вместо string-compare:
 
 ```typescript
-// summarize.ts
-export async function summarize(posts: Post[]): Promise<{
-  html: string;
-  postsDropped: number;
-  itemsCount: number; // <- добавить
-}> { ... }
-
-// web-scraper.ts:282-294
-const { html, postsDropped, itemsCount } = await summarize(posts);
-itemsDropped = postsDropped;
-
-if (itemsCount === 0) {
-  log.info(`[web-scraper] runId=${runId} no relevant content — silence in channel (D-14)`);
-} else {
-  ...
+class ShutdownError extends Error {
+  constructor() { super("shutdown"); this.name = "ShutdownError"; }
 }
-```
 
-Или, как минимум, добавить тест-anchor для `hasAnyItem` (по аналогии с D-12 anchor'ом).
-
-### WR-05: `formatDateRu` в `web-scraper.ts` использует локальный TZ хоста, не MSK
-
-**File:** `src/web-scraper.ts:145-153`
-**Issue:**
-```typescript
-function formatDateRu(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric", month: "short", year: "numeric"
-  }).format(d);
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) { reject(new ShutdownError()); return; }
+    const t = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => { clearTimeout(t); reject(new ShutdownError()); };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
-```
 
-Без `timeZone` опции `Intl.DateTimeFormat` использует local TZ процесса. На Timeweb VDS
-в Москве это совпадёт, но:
-- Если контейнер запущен с `TZ=UTC` (Docker default) — header «🌐 Веб-источники — 5 мая 2026 г.»
-  отправится в 21:15 MSK (=18:15 UTC), хотя по MSK уже 6 мая.
-- README §«Архив прогонов» прямо говорит «дата по MSK».
-- `archive.ts:18-27` правильно использует `timeZone: "Europe/Moscow"` для имени файла —
-  значит файл будет `data/output/2026-05-06-web.md`, а в HTML заголовке внутри — «5 мая 2026 г.».
-  Рассинхрон файла и контента.
-
-**Fix:**
-```typescript
-function formatDateRu(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    day: "numeric", month: "short", year: "numeric",
-  }).format(d);
-}
-```
-
-Также проверить аналогичный код в `summarize.ts` (вне scope этого review, но комментарий
-`web-scraper.ts:142-143` явно говорит что `formatDateRu` дублирован — возможно тот же баг).
-
-### WR-06: `logger.ts:34` логирует `postsDropped`, но README §«Ежедневный summary-лог» этого не показывает
-
-**File:** `src/logger.ts:33`, `README.md:393-412`
-**Issue:** Реальный output:
-```
-posts: collected=N deduped=K dropped=M
-```
-README пример (line 400):
-```
-posts: collected=412 deduped=5
-```
-Поле `dropped` (STRUCT-03 LLM-отброс) появилось в Phase 2/3, но не задокументировано
-в README. Оператор, увидев `dropped=12`, может не понять что это.
-
-**Fix:** Обновить README §«Ежедневный summary-лог»:
-- Добавить `dropped=K` в пример output.
-- Добавить пункт в список «Поля» с описанием: «`dropped` — отброшено LLM по STRUCT-03
-  (вне 5 категорий и без mentions)».
-
-### WR-07: `redirect: "follow"` в `fetchSite` без host-revalidation
-
-**File:** `src/web-scraper.ts:58-63`
-**Issue:** Связано с CR-01 (SSRF). Даже если URL в `websites.json` валиден (например,
-`https://oilcapital.ru/`), сервер может отдать 302 → `Location: http://localhost:6379/`
-или подобное. `fetch` со `redirect: "follow"` молча перейдёт по этой цепочке. Это
-расширяет attack surface CR-01: атакующему не нужно править `websites.json`, достаточно
-скомпрометировать DNS/TLS одного из публичных сайтов либо если сайт выдаст редирект.
-
-**Fix:** Либо `redirect: "manual"` + ручная revalidation (см. fix CR-01), либо явный
-лимит на число редиректов с проверкой final-URL host'а.
-
-### WR-08: `pipeline.ts` Fisher-Yates мутирует входной массив `channels` от `loadChannels()`
-
-**File:** `src/pipeline.ts:32-35`
-**Issue:**
-```typescript
-const channels: ChannelEntry[] = loadChannels();
-...
-for (let i = channels.length - 1; i > 0; i--) {
-  const j = Math.floor(Math.random() * (i + 1));
-  [channels[i], channels[j]] = [channels[j]!, channels[i]!];
-}
-```
-
-Если `loadChannels()` кэширует и возвращает shared-reference (а не свежий массив каждый
-раз), Fisher-Yates замутит cached state. На один процесс с одним `tick()` (mutex) это
-безопасно, но bot-команды (`/channels`, `/add_channel`) могут читать тот же объект
-в **середине** перемешивания. Не review'ил `channels-store.ts`, но риск присутствует.
-
-**Fix:** Защитная копия:
-```typescript
-const channels: ChannelEntry[] = [...loadChannels()];
-```
-
-### WR-09: `run.ts` не handle'ит ошибку из самого `tick()` — outer try/catch отсутствует
-
-**File:** `src/run.ts:15-71`, `src/run.ts:76`
-**Issue:** В `tick()` есть inner try/catch на TG-pipeline (line 30-47) и web-pipeline
-(line 50-67), и outer try/finally сбрасывает `isRunning`. Но если ошибка возникнет
-**между** этими блоками или в коде самого jitter-sleep'а (line 25-27), она пробросится
-в node-cron callback. В `node-cron@3` unhandled rejection из callback'а сжирается без
-лога — daemon будет работать, но без alert владельцу.
-
-Хуже — если `crypto.randomUUID()` бросит (теоретически невозможно, но на edge-runtime
-бывало), `isRunning` останется `true` навсегда (выставлено на line 20, finally на line 68
-сработает, но сам tick умрёт молча).
-
-**Fix:** Обернуть основное тело tick'а ещё одним try/catch + alert:
-
-```typescript
-async function tick(): Promise<void> {
-  if (isRunning) { ... return; }
-  isRunning = true;
-  const runId = crypto.randomUUID().slice(0, 8);
-  try {
-    try {
-      // jitter sleep + TG + web
-      ...
-    } catch (err) {
-      log.error(`[tick] runId=${runId} unexpected tick failure`, err);
-      try {
-        await sendAlert({ stage: "tick", message: (err as Error).message, runId, stack: (err as Error).stack });
-      } catch {}
-    }
-  } finally {
-    isRunning = false;
+// в tick():
+} catch (e) {
+  if (e instanceof ShutdownError) {
+    log.info(`[tick] runId=${runId} aborted during jitter sleep`);
+    return;
   }
+  throw e;
 }
+```
+
+Или, как минимум, — заменить `e.message === "shutdown"` на `signal.aborted === true`:
+
+```typescript
+} catch (e) {
+  if (activeAbort?.signal.aborted) {
+    log.info(`[tick] runId=${runId} aborted during jitter sleep`);
+    return;
+  }
+  throw e;
+}
+```
+
+Источник истины — `signal.aborted`, а не текст ошибки.
+
+### WR-NEW-02: `MAX_REDIRECT_HOPS=5` — лоoп выполняет 6 fetch'ей, error message off-by-one
+
+**File:** `src/web-scraper.ts:56`, `src/web-scraper.ts:68-91`
+**Issue:** Код:
+
+```typescript
+const MAX_REDIRECT_HOPS = 5;
+// ...
+for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+  const res = await fetch(currentUrl, { ... });
+  if (res.status >= 300 && res.status < 400) {
+    // ...
+    if (hop === MAX_REDIRECT_HOPS) {
+      throw new Error(`too many redirects (${MAX_REDIRECT_HOPS + 1}) starting from ${url}`);
+    }
+    currentUrl = nextUrl;
+    continue;
+  }
+  // ...
+}
+```
+
+Цикл выполняется 6 раз (`hop=0..5`), что соответствует **6 fetch'ам** = 5 редиректов
++ 1 финальный success-response. Но:
+
+1. Комментарий line 52 говорит «Ограничение: до 5 hop'ов» — подразумевает 5 *fetch*'ей,
+   а реально 6.
+2. Error message `too many redirects (${MAX_REDIRECT_HOPS + 1})` = «too many redirects (6)».
+   Юзер парсит это как «6 редиректов было», хотя в реальности было 6 fetch'ей или 5
+   реальных редиректов.
+
+Не security-bug, но запутывает диагностику. Browser-стандарт (Chrome/Firefox) — 20
+редиректов; curl — 50; node fetch default — 20. 5 — нормальный консервативный лимит,
+просто терминология сбита.
+
+**Fix:** Согласовать терминологию (выбрать одно из двух):
+
+Вариант A — лимит на число редиректов (не fetch'ей):
+```typescript
+const MAX_REDIRECTS = 5;
+let redirectCount = 0;
+let currentUrl = url;
+if (!isSafePublicUrl(currentUrl)) throw new Error(`unsafe url: ${currentUrl}`);
+while (true) {
+  const res = await fetch(currentUrl, { ... });
+  if (res.status >= 300 && res.status < 400) {
+    if (++redirectCount > MAX_REDIRECTS) {
+      throw new Error(`too many redirects (${MAX_REDIRECTS}) starting from ${url}`);
+    }
+    // resolve Location, isSafePublicUrl check, continue
+    continue;
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.text();
+}
+```
+
+Вариант B — оставить как есть, но обновить комментарий и error message:
+```typescript
+// Ограничение: до 6 fetch'ей (5 редиректов + 1 финальный response).
+// ...
+throw new Error(`too many redirects (${MAX_REDIRECT_HOPS}) starting from ${url}`);
 ```
 
 ## Info
 
-### IN-01: Дублирование `formatDateRu` между `summarize.ts` и `web-scraper.ts`
+### IN-NEW-01: Pre-fetch SSRF check уязвим к DNS rebinding
 
-**File:** `src/web-scraper.ts:142-153`
-**Issue:** Комментарий line 142-144 признаёт дубль. При фиксе WR-05 (timezone) нужно будет
-поменять в двух местах — легко забыть одно. (См. также CR-01: фикс там добавляет ещё одну
-функцию-валидатор, общая поверхность утилит растёт.)
-**Fix:** Вынести в `src/utils/date.ts`:
+**File:** `src/schema.ts:87-96`, `src/web-scraper.ts:65-66`
+**Issue:** `isSafePublicUrl` проверяет `parsed.hostname` против regex-denylist для
+`localhost`, `127.x`, `10.x`, `192.168.x`, `172.16-31.x`, `169.254.x`, `::1`, `fc00:`, `fd00:`.
+Но это TOCTOU-проверка по hostname-string, не по resolved IP. Атакующий, контролирующий
+DNS публичного домена, может направить:
+
+- `evil.example.com → 10.0.0.1` (private network) после прохождения Zod-validation
+- DNS rebinding: первый lookup отдаёт public IP (CR-01 проверка проходит),
+  второй lookup для `Host:` header отдаёт `127.0.0.1`
+
+В контексте проекта это unlikely (websites.json редактируется вручную, не пользовательским
+input'ом), но note-worthy. Полное mitigation требует resolve через `dns.lookup` и проверку
+resolved IPs против CIDR-блоков — это уже за scope'ом minimal SSRF defense.
+
+**Fix:** Не критично — CR-01 fix уже закрывает 95% реалистичных векторов. Если в будущем
+`websites.json` станет user-editable (например через bot-команды `/add_website`), стоит
+добавить:
+
 ```typescript
-export function formatDateRuMsk(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    day: "numeric", month: "short", year: "numeric",
-  }).format(d);
+import { lookup } from "node:dns/promises";
+import ip from "ipaddr.js"; // (новая deps)
+
+async function resolvedIpIsPublic(hostname: string): Promise<boolean> {
+  const { address } = await lookup(hostname);
+  return !ip.parse(address).range().includes("private");
 }
 ```
-Импортировать из обоих файлов.
 
-### IN-02: `archive-web.test.ts` использует `process.chdir` — глобальное состояние
+Сейчас — оставить как есть, добавить комментарий: «pre-fetch denylist; полная защита от DNS
+rebinding отложена до bot-команд для websites».
 
-**File:** `src/__tests__/archive-web.test.ts:26-35`
-**Issue:** `beforeEach`/`afterEach` мутируют `process.cwd()`. Vitest по умолчанию
-запускает тестовые файлы параллельно (worker pool), но within-file тесты sequential —
-безопасно. Однако если когда-нибудь добавят `--pool=threads` + `--isolate=false`, race
-вылезет.
-**Fix:** Передавать workDir явным параметром в `writeRawWeb(posts, runId, baseDir?)` либо
-оставить как есть с явным комментарием про file-level isolation.
+### IN-NEW-02: `pipeline.ts` теряет `itemsCount` из summarize() — не реальная проблема, но inconsistency
 
-### IN-03: `web-scraper.ts:127` — fallback `channelUsername = site.url` при невалидном URL уже мёртвый код
+**File:** `src/pipeline.ts:103`
+**Issue:** Web-pipeline использует `itemsCount` для D-14 (silent on empty digest), но TG-pipeline
+делает `const { html, postsDropped: dropped } = await summarize(freshPosts);` без проверки
+items. Если LLM вернёт 0 items по 5 категориям и 0 mentions, TG-pipeline всё равно отправит
+«пустой» дайджест (5 секций «— нет упоминаний за сутки»).
 
-**File:** `src/web-scraper.ts:121-130`
-**Issue:**
+Это не баг — для TG это by design (CLAUDE.md: «Пустая секция явно помечается «— нет упоминаний
+за сутки», не молчит»). Но inconsistency между TG и web pipeline'ами в обработке `itemsCount`
+стоит явно задокументировать.
+
+**Fix:** Не код-fix, а комментарий в `pipeline.ts:103`:
 ```typescript
-try {
-  channelUsername = new URL(site.url).hostname.replace(/^www\./, "");
-} catch {
-  channelUsername = site.url;
-}
+// Note: TG-pipeline шлёт дайджест даже при itemsCount=0 (как указано в CLAUDE.md
+// «Пустая секция явно помечается»). Web-pipeline (web-scraper.ts:325) silent-skips
+// при itemsCount=0 — другое требование D-14.
+const { html, postsDropped: dropped } = await summarize(freshPosts);
 ```
-Но `site.url` уже прошёл `WebsitesFileSchema.parse()` (Zod `.url()`). `new URL()` не
-бросит на строке, прошедшей `z.string().url()`. Catch-ветка недостижима.
 
-**Fix:** Удалить try/catch, либо оставить с комментарием «defensive — Zod должен был
-отсеять, но на случай рефактора схемы». Если оставлять — добавить `log.warn` в catch,
-чтобы рефактор схемы не молча приводил к bizarre channelUsername.
+### IN-NEW-03: `web-scraper.test.ts:212-227` mock тестирует abort, но не покрывает race с success
 
-### IN-04: `scripts/run-once.ts` не отправляет alert на ошибку — расхождение с README
+**File:** `src/__tests__/web-scraper.test.ts:212-227`
+**Issue:** Текущий тест на abort — mock fetch висит в `new Promise(...)` без таймаута, и
+ждёт сигнал. Это покрывает «timeout сработал → abort → reject». Но не покрывает race:
+что если fetch резолвится **одновременно** с abort'ом? В реальности
+`AbortController.abort()` после получения response не должен ничего ломать, но
+`clearTimeout(timer)` в `fetchSite:100` срабатывает в `finally` — порядок
+operations важен.
 
-**File:** `scripts/run-once.ts:5`, `scripts/run-once.ts:16-19`
-**Issue:** Скрипт прямо документирует «exit 1 на ошибку (без отправки alert-бота)» — это
-осознанное решение. Однако README §«Как проверить, что всё работает» (line 424) говорит
-«При намеренной ошибке... — алерт приходит в личку владельца за ≤60 секунд». Если оператор
-проверяет alert'ы через `npm run start:once` (не daemon), alert не придёт и оператор
-посчитает что alert-канал сломан.
-**Fix:** Либо в README уточнить «через `npm start` (daemon-режим), не `npm run start:once`»,
-либо в run-once добавить optional alert flag.
+Не critical (любая разумная реализация native fetch работает), но добавление race-теста
+повысит уверенность.
 
-### IN-05: `web-scraper.ts:303` ветка «websites.length === 0» недостижима из-за Zod `.min(1)`
+**Fix:** Добавить (опционально):
+```typescript
+it("does not throw when fetch resolves before timeout fires", async () => {
+  fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response("ok", { status: 200 })
+  );
+  // 50ms timeout, but fetch resolves immediately
+  const result = await fetchSite("https://x.com/", 50);
+  expect(result).toBe("ok");
+});
+```
 
-**File:** `src/web-scraper.ts:301-304`
-**Issue:** Комментарий это признаёт («schema gate (.min(1)) этого не допускает, но для
-безопасности»). Defensive code — допустимо, но за этой веткой никогда не пойдёт control flow.
-Можно заменить на `assert(websites.length > 0, "Zod gate violation")` для явной семантики
-«unreachable, but prove it».
-**Fix:** Не критично; либо заменить на assert, либо оставить с явным `// unreachable`.
+### IN-NEW-04: Нет тестов для WR-01 (abortable jitter-sleep) и WR-09 (outer try/catch in tick)
+
+**File:** `src/run.ts:111-127`, `src/run.ts:31-100`
+**Issue:** Auto-fix pass добавил две нетривиальные защиты в `run.ts`, но тестов на них нет.
+Если кто-то в будущем рефакторит `tick()` и случайно уберёт outer try/catch (или
+`abortableSleep` listener cleanup), регрессия пройдёт молча — обе защиты срабатывают только
+в редких сценариях (SIGINT + сразу после cron-fire).
+
+**Fix:** Добавить unit-тесты, экспортируя `abortableSleep` (либо в `__tests__` через `(run as any)`):
+
+```typescript
+// run.test.ts
+describe("abortableSleep (WR-01)", () => {
+  it("resolves after ms when signal not aborted", async () => {
+    const ctrl = new AbortController();
+    const start = Date.now();
+    await abortableSleep(50, ctrl.signal);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(45);
+  });
+  it("rejects with shutdown when signal aborted before timeout", async () => {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 10);
+    await expect(abortableSleep(1000, ctrl.signal)).rejects.toThrow(/shutdown/);
+  });
+  it("rejects immediately if signal already aborted", async () => {
+    const ctrl = new AbortController();
+    ctrl.abort();
+    await expect(abortableSleep(1000, ctrl.signal)).rejects.toThrow(/shutdown/);
+  });
+});
+```
+
+Не блокер — но без них regression в WR-01/WR-09 fix вернёт нас к "daemon висит 30 минут после
+SIGINT".
 
 ---
 
-_Reviewed: 2026-05-06_
+_Reviewed: 2026-05-06T19:30:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+_Re-review of phase 03-web-scraping after fix commits 22c9adc, 84fcc3c, 434f99a, c7ed0ba, 0e14a96, a23613b._
