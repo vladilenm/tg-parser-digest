@@ -6,7 +6,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import * as cheerio from "cheerio";
 import type { Post, WebRunSummary } from "./types.js";
-import { WebsitesFileSchema, type WebsiteEntry } from "./schema.js";
+import { WebsitesFileSchema, isSafePublicUrl, type WebsiteEntry } from "./schema.js";
 import { summarize, escapeHtml } from "./summarize.js";
 import { sendToChannel } from "./deliver.js";
 import { writeRawWeb, writeOutputWeb } from "./archive.js";
@@ -47,24 +47,55 @@ export function loadWebsites(): WebsiteEntry[] {
 
 // =============================================================================
 // fetchSite — D-15..D-18: native fetch с AbortController timeout, Chrome/120 UA, без retry.
-// На любой fail (network, abort, non-2xx) → throw, ловится Promise.allSettled в runWebPipeline.
+// CR-01 / WR-07: redirect: "manual" + явная revalidation Location через isSafePublicUrl,
+// чтобы публичный URL не мог open-redirect'ом увести fetch в private-network (SSRF).
+// Ограничение: до 5 hop'ов, чтобы прерывать redirect-loop'ы и не висеть до timeout'а.
+// На любой fail (network, abort, non-2xx, unsafe redirect) → throw, ловится
+// Promise.allSettled в runWebPipeline.
 // =============================================================================
+const MAX_REDIRECT_HOPS = 5;
+
 export async function fetchSite(url: string, timeoutMs?: number): Promise<string> {
   const ms = timeoutMs ?? Number(process.env.WEB_FETCH_TIMEOUT_MS ?? DEFAULT_FETCH_TIMEOUT_MS);
   const userAgent = process.env.WEB_USER_AGENT ?? DEFAULT_USER_AGENT;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "user-agent": userAgent, "accept": "text/html,*/*" },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+    let currentUrl = url;
+    if (!isSafePublicUrl(currentUrl)) {
+      throw new Error(`unsafe url (private/loopback/non-http): ${currentUrl}`);
     }
-    return await res.text();
+    for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+      const res = await fetch(currentUrl, {
+        method: "GET",
+        headers: { "user-agent": userAgent, "accept": "text/html,*/*" },
+        signal: controller.signal,
+        redirect: "manual",
+      });
+      // 3xx → ручная revalidation Location.
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get("location");
+        if (!location) {
+          throw new Error(`HTTP ${res.status} without Location header`);
+        }
+        // Resolve relative redirects against currentUrl (как делает браузер).
+        const nextUrl = new URL(location, currentUrl).toString();
+        if (!isSafePublicUrl(nextUrl)) {
+          throw new Error(`unsafe redirect blocked: ${currentUrl} -> ${nextUrl}`);
+        }
+        if (hop === MAX_REDIRECT_HOPS) {
+          throw new Error(`too many redirects (${MAX_REDIRECT_HOPS + 1}) starting from ${url}`);
+        }
+        currentUrl = nextUrl;
+        continue;
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return await res.text();
+    }
+    // Недостижимо: цикл либо return'ит, либо throw'ит.
+    throw new Error(`fetchSite: redirect loop exit without response (${url})`);
   } finally {
     clearTimeout(timer);
   }

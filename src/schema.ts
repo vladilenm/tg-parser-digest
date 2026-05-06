@@ -61,11 +61,47 @@ export const CategoryItemsResponseSchema = z.object({
 // ============================================================================
 // WebsitesFileSchema (Phase 3 D-22) — валидация ./websites.json при чтении.
 // Формат: { websites: [{ url, name? }] }. Минимум 1 запись (как ChannelsFileSchema).
-// url: z.string().url() — защита от SSRF/URL-injection (security threat T-03-01).
+// url: http(s) only + denylist private-network — защита от SSRF (T-03-01, CR-01).
 // name: optional, используется как Post.channelUsername (fallback: hostname без www).
 // ============================================================================
+
+// Denylist приватных/loopback/link-local hostname'ов: блокирует SSRF к
+// cloud-metadata (169.254.169.254), localhost, RFC1918 и IPv6 ULA/loopback.
+const PRIVATE_HOSTS: RegExp[] = [
+  /^localhost$/i,
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^::1$/,
+  /^fc00:/i,
+  /^fd00:/i,
+];
+
+/**
+ * isSafePublicUrl — exported helper, переиспользуется fetchSite для
+ * post-redirect revalidation (см. WR-07).
+ * Возвращает true только для http(s) с public hostname.
+ */
+export function isSafePublicUrl(u: string): boolean {
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    if (PRIVATE_HOSTS.some((re) => re.test(parsed.hostname))) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const WebsiteEntrySchema = z.object({
-  url: z.string().url(),
+  url: z
+    .string()
+    .url()
+    .refine(isSafePublicUrl, {
+      message: "url must be http(s) and not point to private/loopback/link-local network",
+    }),
   name: z.string().min(1).optional(),
 });
 
