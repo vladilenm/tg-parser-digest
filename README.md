@@ -7,7 +7,7 @@ Long-running daemon на Node.js + node-cron; на VPS работает под P
 ## Требования
 
 - Node.js **20.6+** (нужен флаг `--env-file` без `dotenv`).
-- Telegram-аккаунт, подписанный на все каналы из `channels.yaml`.
+- Telegram-аккаунт, подписанный на все каналы из `channels.json`.
 - DeepSeek API-ключ (https://platform.deepseek.com).
 - Личный приватный Telegram-канал, в который бот будет постить дайджест.
 
@@ -23,7 +23,7 @@ Long-running daemon на Node.js + node-cron; на VPS работает под P
 
     npm install
 
-Будет установлено пять runtime-зависимостей: `telegram` (GramJS), `openai` (DeepSeek через OpenAI-совместимый SDK), `yaml`, `node-cron` (daemon-режим с расписанием 20:15 MSK), `zod` (schema-валидация ответа DeepSeek).
+Будет установлено пять runtime-зависимостей: `telegram` (GramJS), `openai` (DeepSeek через OpenAI-совместимый SDK), `cheerio` (web-scraping HTML-парсер для Phase 3), `node-cron` (daemon-режим с расписанием 20:15 MSK), `zod` (schema-валидация ответа DeepSeek и `websites.json`/`channels.json`).
 
 ### 2. Секреты и конфиг
 
@@ -50,9 +50,9 @@ Long-running daemon на Node.js + node-cron; на VPS работает под P
 
 ### 4. Подписка user-аккаунта на каналы
 
-User-аккаунт, чей `TG_SESSION` лежит в `.env`, **должен быть подписан** на каждый канал из `channels.yaml` — иначе GramJS выбросит `ChannelPrivateError` и канал будет пропущен.
+User-аккаунт, чей `TG_SESSION` лежит в `.env`, **должен быть подписан** на каждый канал из `channels.json` — иначе GramJS выбросит `ChannelPrivateError` и канал будет пропущен.
 
-Список по умолчанию в `channels.yaml` — отраслевые каналы российского нефтегаза/нефтехимии. Можно заменить на свой список (10–15 публичных каналов по `username`).
+Список по умолчанию в `channels.json` — отраслевые каналы российского нефтегаза/нефтехимии. Можно заменить на свой список (10–15 публичных каналов по `username`). Управление списком — через `src/channels-store.ts` (или бот-команды `/channels`, `/add_channel`, `/remove_channel` — см. ниже).
 
 ### 5. Первый запуск daemon
 
@@ -60,7 +60,7 @@ User-аккаунт, чей `TG_SESSION` лежит в `.env`, **должен б
 
 Что произойдёт:
 
-1. Процесс стартует и выводит в stdout: `[<ISO>] [info] daemon started, schedule: 15 20 * * * Europe/Moscow`.
+1. Процесс стартует и выводит в stdout: `[<ISO>] [info] daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter`.
 2. Процесс висит (event-loop держится от node-cron handle). Пока не 20:15 MSK — ничего не происходит.
 3. В 20:15 MSK (с jitter 0–30 мин) запускается `tick()`:
    - Обходит каналы (с задержкой `CHANNEL_DELAY_MS=1500ms + 0–2500ms jitter`), собирает посты за последние 24ч (до 50/канал).
@@ -337,7 +337,7 @@ Compose автоматически прочитает `./.env` через ста
 
     sudo bash /opt/tg-parser-demo/deploy.sh
 
-Что произойдёт: `git pull --ff-only origin main` → `docker compose up -d --build` → `docker compose logs --tail 50`. Проверь, что в логах есть `daemon started, schedule: 0 20 * * * Europe/Moscow` без ошибок коннекта.
+Что произойдёт: `git pull --ff-only origin main` → `docker compose up -d --build` → `docker compose logs --tail 50`. Проверь, что в логах есть `daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter` без ошибок коннекта.
 
 ### Шаг 5. Настроить auto-deploy через GitHub Actions
 
@@ -387,7 +387,7 @@ Compose автоматически прочитает `./.env` через ста
 ## Оперативная документация
 
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) — сценарии диагностики и восстановления: что делать при FloodWait, ChannelPrivateError, сбое DeepSeek, сбое alert-бота и т.д.
-- [docs/CHANNELS.md](docs/CHANNELS.md) — checklist добавления/замены канала в `channels.yaml`, проверки подписки user-аккаунта и перезапуска daemon.
+- [docs/CHANNELS.md](docs/CHANNELS.md) — checklist добавления/замены канала в `channels.json`, проверки подписки user-аккаунта и перезапуска daemon.
 
 ## Ежедневный summary-лог
 
@@ -396,7 +396,7 @@ Compose автоматически прочитает `./.env` через ста
     [2026-04-22T17:00:42.123Z] [summary] runId=abc12345
       duration=58.4s
       channels: total=50 succeeded=47 skipped=3
-      posts: collected=412 deduped=5
+      posts: collected=412 deduped=5 dropped=12
       delivered=true
       errors:
         - neftegazru: FloodWait retry exhausted
@@ -407,7 +407,7 @@ Compose автоматически прочитает `./.env` через ста
 - `runId` — короткий UUID прогона (для корреляции с предыдущими логами `[pipeline] runId=...`).
 - `duration` — длительность в секундах (на 50 каналах ожидается 90-180 сек).
 - `channels: total=N succeeded=M skipped=K` — сколько каналов прошли без ошибок и сколько помечены skipped (попали в errors[]).
-- `posts: collected=N deduped=K` — собрано уникальных постов и отброшено дублей (in-memory + hash-cache hits суммарно).
+- `posts: collected=N deduped=K dropped=M` — собрано уникальных постов; отброшено дублей (in-memory + hash-cache hits суммарно); отброшено LLM (STRUCT-03: пост вне 5 категорий и без mentions, либо не прошёл серверную проверку дословности `keyQuote`).
 - `delivered=true|false` — отправлен ли HTML-дайджест в приватный канал (false если `posts.collected === 0` — пустой день).
 - `errors:` — список ошибок в формате `${username}: ${message}`; секция не печатается если ошибок нет.
 
@@ -462,7 +462,8 @@ User-аккаунт не подписан на этот канал. Открой
     ├── tsconfig.json             # strict, ESNext, moduleResolution: bundler
     ├── ecosystem.config.cjs      # PM2 daemon config
     ├── .env.example              # шаблон секретов и параметров (8 обязательных)
-    ├── channels.yaml             # список публичных каналов
+    ├── channels.json             # список публичных каналов (JSON-массив, см. src/channels-store.ts)
+    ├── websites.json             # список публичных сайтов для web-pipeline (Phase 3)
     ├── README.md                 # этот файл
     ├── docs/
     │   ├── RUNBOOK.md            # сценарии диагностики и восстановления
