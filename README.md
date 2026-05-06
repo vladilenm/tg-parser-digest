@@ -156,7 +156,7 @@ PM2-путь (`ecosystem.config.cjs`) остаётся рабочим — выб
 2. Подключить GitHub-репо (`tg-parser-demo`), ветку `main`. Timeweb сам найдёт `docker-compose.yml` в корне.
 3. Задать env-переменные через UI (Timeweb передаёт их в контейнер, `.env` файл НЕ нужен на проде):
    - **Обязательные:** `TG_API_ID`, `TG_API_HASH`, `TG_SESSION` (из Шага 1), `TG_BOT_TOKEN`, `TG_CHANNEL_ID`, `DEEPSEEK_API_KEY`, `BOT_TOKEN_ALERTS`, `ALERTS_CHAT_ID`.
-   - **Опциональные** (значения по умолчанию подходят, см. `.env.example`): `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `FETCH_WINDOW_HOURS`, `MAX_MESSAGES_PER_CHANNEL`, `CHANNEL_DELAY_MS`, `LOG_LEVEL`.
+   - **Опциональные** (значения по умолчанию подходят, см. `.env.example`): `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `CLASSIFY_CHUNK_SIZE`, `FETCH_WINDOW_HOURS`, `MAX_MESSAGES_PER_CHANNEL`, `CHANNEL_DELAY_MS`, `LOG_LEVEL`.
 
 После сохранения Timeweb автоматически собирает образ и запускает контейнер. Каждый последующий `git push` в `main` триггерит ребилд и редеплой.
 
