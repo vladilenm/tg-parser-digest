@@ -17,8 +17,7 @@ import { dedupAgainstCache, commitHashCache } from "./dedup.js";
  * отдаёт батч DeepSeek'у, шлёт HTML в канал, возвращает RunSummary.
  * Не завершает процесс — ошибки пробрасывает вызывающему (daemon в src/run.ts).
  */
-export async function runPipeline(): Promise<RunSummary> {
-  const runId = crypto.randomUUID().slice(0, 8);
+export async function runPipeline(runId: string): Promise<RunSummary> {
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
 
