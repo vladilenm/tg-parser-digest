@@ -49,15 +49,19 @@ Validated in Phase 2 (Daemon + 50 каналов, 2026-04-26, code complete):
 - [x] **DEPLOY-01..02**: `ecosystem.config.cjs` (PM2 fork, `--import tsx`, `kill_timeout=180000`); `node-cron@^3.0.3` + `@types/node-cron@^3.0.11`
 - [x] **DOC-01..03**: README §«Запуск на VPS (PM2)», §«Ежедневный summary-лог», обновлён под daemon-режим
 
+Validated in Phase 3 (Web Scraping, 2026-05-06):
+
+- [x] **WEB-01..04**: `cheerio ^1.0.0` (5-я runtime-dep) + `websites.json` (5 нефтегазовых сайтов) + `WebsitesFileSchema`/`WebRunSummary`; `src/web-scraper.ts` (loadWebsites/fetchSite/extractText/siteToPost/composeWebDigest/runWebPipeline); daemon-tick запускает `runPipeline` и `runWebPipeline` в независимых try/catch — падение одного не блокирует другой; `summarize()` переиспользован → extractive verify работает идентично TG; недоступный/пустой сайт (<200 chars) пропускается с логом; vitest 116/116 passing; README §«Парсинг веб-сайтов»
+
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
 Milestone v4.0 «Управление каналами + парсинг сайтов» (REQ-IDs назначаются в `REQUIREMENTS.md`):
 
-- Управление каналами через Telegram-бота: /channels (список), /add_channel, /remove_channel; доступ для оператора и Заказчика
-- Хранение каналов в `channels.json` (миграция с YAML завершена); pipeline читает каналы из JSON
-- Парсинг списка веб-сайтов (скрейпинг HTML): тот же DeepSeek-пайплайн, отдельное сообщение в канал Заказчика
+- Управление каналами через Telegram-бота: /channels (список), /add_channel, /remove_channel; доступ для оператора и Заказчика — Phase 2 завершена
+- Хранение каналов в `channels.json` (миграция с YAML завершена); pipeline читает каналы из JSON — Phase 1 завершена
+- Парсинг списка веб-сайтов (скрейпинг HTML): тот же DeepSeek-пайплайн, отдельное сообщение в канал Заказчика — Phase 3 завершена
 
 ### Out of Scope
 
@@ -141,4 +145,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-05 — milestone v4.0 «Управление каналами + парсинг сайтов» started; v3.0 closed (delivered via quick tasks)*
+*Last updated: 2026-05-06 — Phase 3 (Web Scraping) завершена в milestone v4.0; web-pipeline интегрирован в daemon-tick (`runWebPipeline` в `src/web-scraper.ts`)*
