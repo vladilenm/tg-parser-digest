@@ -33,11 +33,21 @@ const mockedMutate = vi.mocked(mutate);
 // Helpers (W-6: ОДИН helper для подмены текущего состояния channels.json внутри mutate(fn)).
 // =============================================================================
 
+// WR-03: захватываем возвращаемое значение fn — production mutate() пишет на диск
+// именно его (channels-store.ts:113-120). Без этого тесты проходят зелёными
+// даже если addChannel/removeChannel вернёт неправильный массив, лишь бы
+// мутировал closure'овый `result`. Захват lastWrittenChannels позволяет проверить
+// фактическое финальное состояние channels.json (как в production).
+let lastWrittenChannels: ChannelEntry[] | null = null;
+
 // W-6: единый helper для подмены текущего состояния channels.json внутри mutate(fn).
 // Никаких альтернативных подходов — все CRUD-обёртки и handler'ы тестируются через него.
 function withCurrentChannels(channels: ChannelEntry[]): void {
+  lastWrittenChannels = null;
   mockedMutate.mockImplementation(async (fn) => {
-    await fn(channels);
+    // Имитируем production-семантику mutate: захватываем next и пишем на «диск».
+    const next = await fn(channels);
+    lastWrittenChannels = next;
   });
 }
 
@@ -231,21 +241,25 @@ describe("parseRemoveCallbackData (BOT-03 D-11 callback_data format)", () => {
 // =============================================================================
 
 describe("addChannel CRUD wrapper (BOT-02 idempotent)", () => {
-  it("возвращает 'added' и вызывает mutate если канал отсутствует", async () => {
+  it("возвращает 'added' и записывает новый канал в channels.json (WR-03)", async () => {
     withCurrentChannels([]);
     const result = await addChannel("newch");
     expect(result).toBe("added");
     // I-3: проверяем что mutate вызван 1 раз и аргумент — функция.
     expect(mockedMutate).toHaveBeenCalledTimes(1);
     expect(typeof mockedMutate.mock.calls[0][0]).toBe("function");
+    // WR-03: финальное состояние channels.json содержит новый канал.
+    expect(lastWrittenChannels).toEqual([{ username: "newch" }]);
   });
 
-  it("возвращает 'exists' если канал уже в списке (idempotent)", async () => {
+  it("возвращает 'exists' и не меняет список если канал уже в списке (idempotent, WR-03)", async () => {
     withCurrentChannels([{ username: "existing" }]);
     const result = await addChannel("existing");
     expect(result).toBe("exists");
     // I-3: mutate всё равно вызван (mutex берётся), но fn не меняет channels.
     expect(mockedMutate).toHaveBeenCalledTimes(1);
+    // WR-03: финальное состояние не изменилось.
+    expect(lastWrittenChannels).toEqual([{ username: "existing" }]);
   });
 });
 
@@ -254,18 +268,22 @@ describe("addChannel CRUD wrapper (BOT-02 idempotent)", () => {
 // =============================================================================
 
 describe("removeChannel CRUD wrapper (BOT-03 idempotent)", () => {
-  it("возвращает 'removed' если канал есть", async () => {
+  it("возвращает 'removed' и удаляет нужный канал из списка (WR-03)", async () => {
     withCurrentChannels([{ username: "present" }, { username: "other" }]);
     const result = await removeChannel("present");
     expect(result).toBe("removed");
     expect(mockedMutate).toHaveBeenCalledTimes(1);
+    // WR-03: на «диск» уходит массив без удалённого канала.
+    expect(lastWrittenChannels).toEqual([{ username: "other" }]);
   });
 
-  it("возвращает 'missing' если канал отсутствует (D-14, idempotent)", async () => {
+  it("возвращает 'missing' и сохраняет список без изменений (D-14, idempotent, WR-03)", async () => {
     withCurrentChannels([{ username: "other" }]);
     const result = await removeChannel("absent");
     expect(result).toBe("missing");
     expect(mockedMutate).toHaveBeenCalledTimes(1);
+    // WR-03: финальное состояние совпадает с исходным.
+    expect(lastWrittenChannels).toEqual([{ username: "other" }]);
   });
 });
 
