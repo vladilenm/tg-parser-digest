@@ -132,6 +132,27 @@ async function sendReply(
   });
 }
 
+/**
+ * Вариант sendReply с inline-keyboard (D-11/D-13). Используется для подтверждения
+ * /remove_channel — две кнопки confirm/cancel.
+ * Plain-text без HTML/Markdown форматирования (D-10), reply_to_message_id (D-09).
+ */
+async function sendReplyWithKeyboard(
+  token: string,
+  chatId: number,
+  replyToMessageId: number,
+  text: string,
+  keyboard: TgInlineKeyboardButton[][]
+): Promise<void> {
+  await tgFetch<{ ok: boolean }>(token, "sendMessage", {
+    chat_id: chatId,
+    reply_to_message_id: replyToMessageId,
+    text,
+    disable_web_page_preview: true,
+    reply_markup: { inline_keyboard: keyboard },
+  });
+}
+
 // =============================================================================
 // CRUD-обёртки (D-16): живут рядом с handler'ами, используют mutate() из Phase 1.
 // =============================================================================
@@ -243,8 +264,149 @@ export async function handleCommand(
     await sendReply(token, msg.chat.id, msg.message_id, reply);
     return;
   }
-  // /remove_channel — добавляется в Plan 2.
+  if (cmd === "/remove_channel") {
+    const arg = text.slice(firstWord.length).trim();
+    if (!arg) {
+      await sendReply(
+        token,
+        msg.chat.id,
+        msg.message_id,
+        "Использование: /remove_channel <username>\nНапример: /remove_channel @durov"
+      );
+      return;
+    }
+    const u = normalizeUsername(arg);
+    if (!u) {
+      await sendReply(
+        token,
+        msg.chat.id,
+        msg.message_id,
+        `Невалидный username: ${arg}\nДопустимы: 5-32 символа, начинается с буквы, далее буквы/цифры/_`
+      );
+      return;
+    }
+    // D-11: callback_data самодостаточный — username внутри. Лимит 64 байта,
+    // username ≤32 символов → влезает с большим запасом.
+    const keyboard: TgInlineKeyboardButton[][] = [
+      [
+        { text: "Удалить", callback_data: `rm:${u}:confirm` },
+        { text: "Отмена", callback_data: `rm:${u}:cancel` },
+      ],
+    ];
+    await sendReplyWithKeyboard(
+      token,
+      msg.chat.id,
+      msg.message_id,
+      `Удалить @${u} из списка каналов?`,
+      keyboard
+    );
+    return;
+  }
   // Прочие команды игнорируются молча.
+}
+
+// =============================================================================
+// Callback query handler (D-11/D-12/D-13/D-14): /remove_channel confirmation flow.
+// =============================================================================
+
+/**
+ * Парсит callback_data формата `rm:<username>:confirm` или `rm:<username>:cancel` (D-11).
+ * Возвращает { username, action } или null если формат невалиден.
+ * Экспорт для unit-тестов (Plan 4).
+ */
+export function parseRemoveCallbackData(
+  data: string
+): { username: string; action: "confirm" | "cancel" } | null {
+  const parts = data.split(":");
+  if (parts.length !== 3 || parts[0] !== "rm") return null;
+  const username = parts[1];
+  const action = parts[2];
+  if (!username || (action !== "confirm" && action !== "cancel")) return null;
+  return { username, action };
+}
+
+/**
+ * Обработчик callback_query от inline-кнопок /remove_channel.
+ * D-12: любой allowlist-юзер (не только инициатор) может нажать.
+ * D-07/D-08: не-allowlist → silent ignore (без answerCallbackQuery!) + log.info.
+ * D-13: editMessageReplyMarkup (убираем кнопки) + editMessageText (новый текст).
+ * D-14: removeChannel идемпотентен — повторный confirm после первого даёт "missing".
+ * W-3: каждый editMessage* в свой try/catch — Telegram возвращает 400 если "message
+ * is not modified" / message удалён юзером, эти ошибки не должны валить handler.
+ *
+ * Экспорт для unit-тестов (Plan 4).
+ */
+export async function handleCallbackQuery(
+  token: string,
+  cb: TgCallbackQuery,
+  allowlist: Set<number>
+): Promise<void> {
+  const userId = cb.from.id;
+  const data = cb.data ?? "";
+
+  // D-07/D-08/D-12: не-allowlist пользователь — silent ignore.
+  // ВАЖНО: НЕ вызываем answerCallbackQuery — иначе клиент получит ack и поймёт,
+  // что бот его «увидел». Silent ignore = клиент видит вечный "loading" 15 минут,
+  // потом Telegram сам очищает callback. Это и есть желаемое поведение.
+  if (!allowlist.has(userId)) {
+    log.info(`[bot] denied: from=${userId} cmd=callback:${data}`);
+    return;
+  }
+
+  const parsed = parseRemoveCallbackData(data);
+  if (!parsed || !cb.message) {
+    // Неизвестный формат или отсутствует message (например, inline-mode) —
+    // отвечаем нейтральным answerCallbackQuery без действий (graceful).
+    await tgFetch<{ ok: boolean }>(token, "answerCallbackQuery", {
+      callback_query_id: cb.id,
+    });
+    return;
+  }
+
+  const { username, action } = parsed;
+  const chatId = cb.message.chat.id;
+  const messageId = cb.message.message_id;
+
+  // ack callback (обязательно в течение 15 мин — иначе клиент покажет loading).
+  await tgFetch<{ ok: boolean }>(token, "answerCallbackQuery", {
+    callback_query_id: cb.id,
+  });
+
+  let newText: string;
+  if (action === "cancel") {
+    newText = `Отмена удаления @${username}.`;
+  } else {
+    // confirm — D-14: idempotent.
+    const status = await removeChannel(username);
+    newText =
+      status === "removed"
+        ? `Удалён @${username}.`
+        : `@${username} не найден в списке (возможно, уже удалён).`;
+  }
+
+  // D-13: сначала убираем кнопки, потом обновляем текст. Если editMessageText
+  // упадёт — кнопки всё равно убраны и пользователь не нажмёт повторно.
+  // W-3: каждый editMessage* в свой try/catch.
+  try {
+    await tgFetch<{ ok: boolean }>(token, "editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: [] },
+    });
+  } catch (err) {
+    log.warn(
+      `[bot] editMessageReplyMarkup failed: ${(err as Error).message}`
+    );
+  }
+  try {
+    await tgFetch<{ ok: boolean }>(token, "editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: newText,
+    });
+  } catch (err) {
+    log.warn(`[bot] editMessageText failed: ${(err as Error).message}`);
+  }
 }
 
 // =============================================================================
@@ -274,8 +436,9 @@ async function pollOnce(
     try {
       if (upd.message) {
         await handleCommand(token, upd.message, allowlist);
+      } else if (upd.callback_query) {
+        await handleCallbackQuery(token, upd.callback_query, allowlist);
       }
-      // callback_query — Plan 2.
     } catch (err) {
       log.error(`[bot] handler error: ${(err as Error).message}`);
     }
