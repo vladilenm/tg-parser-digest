@@ -6,6 +6,7 @@ import cron from "node-cron";
 import { runPipeline } from "./pipeline.js";
 import { log, logRunSummary } from "./logger.js";
 import { sendAlert } from "./alert.js";
+import { startBot, stopBot, isBotPolling } from "./bot.js";
 
 // DAEMON-03: mutex от параллельных тиков. In-memory boolean — достаточно для single-process PM2 fork.
 let isRunning = false;
@@ -52,10 +53,48 @@ async function tick(): Promise<void> {
 const task = cron.schedule("15 20 * * *", tick, { timezone: "Europe/Moscow" });
 log.info("daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter");
 
+// BOT-05 / D-05: bot polling запускается параллельно с cron.
+// НЕ await — startBot бесконечный (polling-loop), иначе блокирует процесс.
+// void маркирует floating promise намеренно. Контракт startBot: внутри уже
+// exp.backoff на сетевых ошибках (см. src/bot.ts pollLoop) и финальный try/catch.
+// Outer catch здесь — страховка на случай если что-то проскочит мимо внутреннего try.
+// crypto.randomUUID() глобально доступен в Node 20.6+ (Web Crypto API);
+// паттерн runId-генерации см. src/run.ts существующий tick().
+void (async () => {
+  try {
+    await startBot();
+  } catch (err) {
+    const e = err as Error;
+    log.error("bot startBot exited with unexpected error", e);
+    const alertId = crypto.randomUUID().slice(0, 8);
+    try {
+      await sendAlert({
+        stage: "bot",
+        message: e?.message ?? String(err),
+        runId: alertId,
+        stack: e?.stack,
+      });
+    } catch (alertErr) {
+      log.error("alert send failed", alertErr);
+    }
+  }
+})();
+
 // DAEMON-01: graceful shutdown — ждём активный прогон, потом exit 0.
 const shutdown = async (signal: string): Promise<void> => {
-  log.info(`received ${signal}, stopping cron`);
+  log.info(`received ${signal}, stopping cron and bot`);
   task.stop();
+  // D-06: остановить bot polling и дождаться завершения текущего getUpdates
+  // (≤30s timeout polling'а + 5s buffer = 35s total).
+  stopBot();
+  const botShutdownDeadline = Date.now() + 35_000;
+  while (isBotPolling() && Date.now() < botShutdownDeadline) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (isBotPolling()) {
+    log.warn("bot polling did not stop within 35s — force exit");
+  }
+  // Существующий wait для активного pipeline-tick'а.
   while (isRunning) {
     await new Promise((r) => setTimeout(r, 500));
   }
