@@ -21,7 +21,11 @@ export async function runPipeline(runId: string): Promise<RunSummary> {
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
 
-  const channels: ChannelEntry[] = loadChannels();
+  // WR-08: defensive shallow copy — Fisher-Yates ниже мутирует массив in-place;
+  // если loadChannels когда-нибудь начнёт кэшировать internal state, мы бы перетёрли
+  // его порядок и ломали concurrent bot-команды (/channels, /add_channel),
+  // читающие тот же объект.
+  const channels: ChannelEntry[] = [...loadChannels()];
   const limit = Number(process.env.MAX_MESSAGES_PER_CHANNEL ?? 50);
   const windowHours = Number(process.env.FETCH_WINDOW_HOURS ?? 24);
   // ANTIBAN: 1500 мс база + jitter 0–2500 мс = 1.5–4 сек разброс между каналами.
