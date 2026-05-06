@@ -4,8 +4,8 @@ milestone: v4.0
 milestone_name: milestone
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-05-05T12:30:08.504Z"
-last_activity: 2026-05-05 — Roadmap created, 12/12 requirements mapped
+last_updated: "2026-05-06T05:50:50.556Z"
+last_activity: 2026-05-06 — Completed quick task 260506-cad: чанкование Pass 1 (CLASSIFY_CHUNK_SIZE)
 progress:
   total_phases: 3
   completed_phases: 0
@@ -69,11 +69,12 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit |
-|---|-------------|------|--------|
-| 260504-f5z | Vitest unit tests для summarize.ts | 2026-05-04 | f71266f |
-| 260504-ew9 | Рефактор summarize.ts двухпроходная LLM-архитектура | 2026-05-04 | fc47b20 |
-| 260504-eae | Заголовок дайджеста + per-category DeepSeek лимиты | 2026-05-04 | bb3544e |
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260504-f5z | Vitest unit tests для summarize.ts | 2026-05-04 | f71266f | — |
+| 260504-ew9 | Рефактор summarize.ts двухпроходная LLM-архитектура | 2026-05-04 | fc47b20 | — |
+| 260504-eae | Заголовок дайджеста + per-category DeepSeek лимиты | 2026-05-04 | bb3544e | — |
+| 260506-cad | Чанкование Pass 1 в classifyPosts (CLASSIFY_CHUNK_SIZE) — фикс ECONNRESET на 220+ постах | 2026-05-06 | 6d338e5 | [260506-cad-pass-1-src-summarize-ts-classifyposts-ll](./quick/260506-cad-pass-1-src-summarize-ts-classifyposts-ll/) |
 
 ## Session Continuity
 
