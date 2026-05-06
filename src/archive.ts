@@ -66,3 +66,34 @@ export function writeOutput(html: string, runId: string): void {
   atomicWriteText(path, html);
   log.info(`[archive] runId=${runId} wrote output: ${path} (${html.length} chars)`);
 }
+
+/**
+ * Phase 3 D-20: записать массив web-Post'ов после fetch+extraction в data/raw/YYYY-MM-DD-web.json.
+ * Параллельный аналог writeRaw, отличается только суффиксом `-web` в имени файла.
+ * Вызывается ДО dedup/LLM (инвариант: «сырое сохранено даже если остаток упал»).
+ * D-11: re-run за тот же день перезаписывает файл.
+ */
+export function writeRawWeb(posts: Post[], runId: string): void {
+  const path = `${RAW_DIR}/${todayMsk()}-web.json`;
+  const payload = posts.map((p) => ({
+    username: p.channelUsername,
+    messageId: p.messageId,
+    text: p.text,
+    date: p.postedAt,
+    url: p.url,
+  }));
+  atomicWriteText(path, JSON.stringify(payload, null, 2));
+  log.info(`[archive] runId=${runId} wrote raw web: ${path} (${posts.length} posts)`);
+}
+
+/**
+ * Phase 3 D-20: записать финальный HTML web-дайджеста в data/output/YYYY-MM-DD-web.md.
+ * Параллельный аналог writeOutput, отличается только суффиксом `-web`.
+ * Вызывается ПОСЛЕ успешного sendToChannel — содержание byte-for-byte идентично отправленному.
+ * D-11: re-run за тот же день перезаписывает файл.
+ */
+export function writeOutputWeb(html: string, runId: string): void {
+  const path = `${OUTPUT_DIR}/${todayMsk()}-web.md`;
+  atomicWriteText(path, html);
+  log.info(`[archive] runId=${runId} wrote output web: ${path} (${html.length} chars)`);
+}
