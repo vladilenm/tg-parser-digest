@@ -1,0 +1,377 @@
+// src/bot.ts — Telegram bot polling + commands handler.
+// Использует тот же TG_BOT_TOKEN, что и delivery (D-01). CRUD-обёртки рядом с handler'ами (D-16).
+
+import { mutate, loadChannels, type ChannelEntry } from "./channels-store.js";
+import { log } from "./logger.js";
+
+// =============================================================================
+// Telegram API минимальные типы — чтобы избежать `any` в polling/handlers.
+// =============================================================================
+
+interface TgUser {
+  id: number;
+}
+interface TgChat {
+  id: number;
+}
+interface TgMessage {
+  message_id: number;
+  from?: TgUser;
+  chat: TgChat;
+  text?: string;
+}
+interface TgCallbackQuery {
+  id: string;
+  from: TgUser;
+  message?: TgMessage;
+  data?: string;
+}
+interface TgUpdate {
+  update_id: number;
+  message?: TgMessage;
+  callback_query?: TgCallbackQuery;
+}
+interface TgGetUpdatesResponse {
+  ok: boolean;
+  result: TgUpdate[];
+  description?: string;
+}
+interface TgInlineKeyboardButton {
+  text: string;
+  callback_data: string;
+}
+interface TgReplyMarkup {
+  inline_keyboard: TgInlineKeyboardButton[][];
+}
+
+// =============================================================================
+// Module-level state.
+// =============================================================================
+
+const TG_API = "https://api.telegram.org";
+const POLL_TIMEOUT_SEC = 30;
+// Telegram username regex: 5-32 символа, начинается с буквы, далее буквы/цифры/_.
+const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
+
+let lastOffset = 0;
+let stopRequested = false;
+let pollingActive = false;
+
+// =============================================================================
+// Helpers.
+// =============================================================================
+
+/**
+ * Парсит BOT_ALLOWED_USER_IDS (comma-separated numeric) в Set<number>.
+ * Пустые/нечисловые/неположительные токены отбрасываются.
+ * Экспорт для unit-тестов (Plan 4).
+ */
+export function parseAllowlist(envValue: string | undefined): Set<number> {
+  if (!envValue) return new Set();
+  return new Set(
+    envValue
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => Number.parseInt(s, 10))
+      .filter((n) => Number.isInteger(n) && n > 0)
+  );
+}
+
+/**
+ * Strip leading `@`, валидация по USERNAME_REGEX.
+ * Регистр НЕ меняем (Telegram username case-insensitive, но храним как ввели).
+ * Возвращает username без `@` или null если не валиден.
+ * Экспорт для unit-тестов (Plan 4).
+ */
+export function normalizeUsername(raw: string): string | null {
+  const trimmed = raw.trim();
+  const stripped = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  if (!USERNAME_REGEX.test(stripped)) return null;
+  return stripped;
+}
+
+/**
+ * Обёртка над fetch к Bot API. На !res.ok — throw c HTTP-кодом и телом ответа.
+ * Паттерн скопирован из src/deliver.ts:72-81.
+ */
+async function tgFetch<T>(
+  token: string,
+  method: string,
+  body: unknown
+): Promise<T> {
+  const res = await fetch(`${TG_API}/bot${token}/${method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const responseBody = await res.text();
+    throw new Error(
+      `[bot] ${method} failed: ${res.status} ${responseBody.slice(0, 300)}`
+    );
+  }
+  return (await res.json()) as T;
+}
+
+/**
+ * D-09/D-10: ответ на команду — sendMessage в тот же chat,
+ * с reply_to_message_id, plain-text без HTML/Markdown форматирования.
+ */
+async function sendReply(
+  token: string,
+  chatId: number,
+  replyToMessageId: number,
+  text: string
+): Promise<void> {
+  await tgFetch<{ ok: boolean }>(token, "sendMessage", {
+    chat_id: chatId,
+    reply_to_message_id: replyToMessageId,
+    text,
+    disable_web_page_preview: true,
+  });
+}
+
+// =============================================================================
+// CRUD-обёртки (D-16): живут рядом с handler'ами, используют mutate() из Phase 1.
+// =============================================================================
+
+/**
+ * Возвращает текстовое представление текущего списка каналов.
+ * BOT-01.
+ */
+export function listChannels(): string {
+  const channels = loadChannels();
+  if (channels.length === 0) return "Список каналов пуст";
+  const lines = channels.map((c, i) => `${i + 1}. @${c.username}`);
+  return `Каналов: ${channels.length}\n` + lines.join("\n");
+}
+
+/**
+ * Идемпотентное добавление канала. Возвращает "added" / "exists".
+ * BOT-02.
+ */
+export async function addChannel(
+  username: string
+): Promise<"added" | "exists"> {
+  let result: "added" | "exists" = "added";
+  await mutate((channels: ChannelEntry[]) => {
+    if (channels.some((c) => c.username === username)) {
+      result = "exists";
+      return channels;
+    }
+    return [...channels, { username }];
+  });
+  return result;
+}
+
+/**
+ * Идемпотентное удаление канала. Возвращает "removed" / "missing".
+ * BOT-03 (handler сам вызывается из Plan 2).
+ */
+export async function removeChannel(
+  username: string
+): Promise<"removed" | "missing"> {
+  let result: "removed" | "missing" = "removed";
+  await mutate((channels: ChannelEntry[]) => {
+    const next = channels.filter((c) => c.username !== username);
+    if (next.length === channels.length) result = "missing";
+    return next;
+  });
+  return result;
+}
+
+// =============================================================================
+// Command router.
+// =============================================================================
+
+/**
+ * Маршрутизирует команды от allowlist'а. Не-allowlist → silent ignore + log.info (D-07/D-08).
+ * Поддерживает suffix `@botname` (`/channels@MyBot` → `/channels`).
+ * Экспорт для unit-тестов (Plan 4).
+ */
+export async function handleCommand(
+  token: string,
+  msg: TgMessage,
+  allowlist: Set<number>
+): Promise<void> {
+  const userId = msg.from?.id;
+  const text = msg.text?.trim() ?? "";
+  if (!userId || !text.startsWith("/")) return;
+
+  // Извлекаем команду (до пробела или конца) с учётом suffix'а @botname.
+  const firstWord = text.split(/\s+/)[0];
+  const cmd = firstWord.split("@")[0]; // "/channels@MyBot" → "/channels"
+
+  if (!allowlist.has(userId)) {
+    // D-08: info-level, формат `[bot] denied: from=%d cmd=%s`.
+    log.info(`[bot] denied: from=${userId} cmd=${cmd}`);
+    return;
+  }
+
+  if (cmd === "/channels") {
+    const reply = listChannels();
+    await sendReply(token, msg.chat.id, msg.message_id, reply);
+    return;
+  }
+  if (cmd === "/add_channel") {
+    const arg = text.slice(firstWord.length).trim();
+    if (!arg) {
+      await sendReply(
+        token,
+        msg.chat.id,
+        msg.message_id,
+        "Использование: /add_channel <username>\nНапример: /add_channel @durov"
+      );
+      return;
+    }
+    const u = normalizeUsername(arg);
+    if (!u) {
+      await sendReply(
+        token,
+        msg.chat.id,
+        msg.message_id,
+        `Невалидный username: ${arg}\nДопустимы: 5-32 символа, начинается с буквы, далее буквы/цифры/_`
+      );
+      return;
+    }
+    const status = await addChannel(u);
+    const reply =
+      status === "added"
+        ? `Добавлен @${u}. Будет использован в следующем прогоне в 20:15 MSK.`
+        : `@${u} уже в списке.`;
+    await sendReply(token, msg.chat.id, msg.message_id, reply);
+    return;
+  }
+  // /remove_channel — добавляется в Plan 2.
+  // Прочие команды игнорируются молча.
+}
+
+// =============================================================================
+// Polling loop.
+// =============================================================================
+
+async function pollOnce(
+  token: string,
+  allowlist: Set<number>
+): Promise<void> {
+  const resp = await tgFetch<TgGetUpdatesResponse>(token, "getUpdates", {
+    offset: lastOffset,
+    timeout: POLL_TIMEOUT_SEC,
+    allowed_updates: ["message", "callback_query"],
+  });
+  if (!resp.ok) {
+    log.warn(
+      `[bot] getUpdates returned ok=false: ${
+        resp.description ?? "(no description)"
+      }`
+    );
+    return;
+  }
+  for (const upd of resp.result) {
+    // W-1: сдвигаем offset на update_id + 1 — иначе тот же update прилетит снова.
+    lastOffset = Math.max(lastOffset, upd.update_id + 1);
+    try {
+      if (upd.message) {
+        await handleCommand(token, upd.message, allowlist);
+      }
+      // callback_query — Plan 2.
+    } catch (err) {
+      log.error(`[bot] handler error: ${(err as Error).message}`);
+    }
+  }
+}
+
+async function pollLoop(
+  token: string,
+  allowlist: Set<number>
+): Promise<void> {
+  // D-03: deleteWebhook ОБЯЗАТЕЛЕН до первого getUpdates.
+  // drop_pending_updates: false — сохраняем очередь команд за время рестарта.
+  try {
+    await tgFetch<{ ok: boolean }>(token, "deleteWebhook", {
+      drop_pending_updates: false,
+    });
+    log.info("[bot] deleteWebhook ok (drop_pending_updates=false)");
+  } catch (err) {
+    log.error(`[bot] deleteWebhook failed: ${(err as Error).message}`);
+    // Продолжаем — getUpdates даст 409 если webhook остался, поймаем в catch ниже.
+  }
+
+  // Exp.backoff: 1000/2000/4000ms (паттерн из telegram.ts reconnect).
+  const backoffMs = [1000, 2000, 4000];
+  let backoffIdx = 0;
+
+  while (!stopRequested) {
+    try {
+      await pollOnce(token, allowlist);
+      backoffIdx = 0; // успех — сброс backoff'а
+    } catch (err) {
+      const delay = backoffMs[Math.min(backoffIdx, backoffMs.length - 1)];
+      log.error(
+        `[bot] poll error: ${(err as Error).message}; retry in ${delay}ms`
+      );
+      backoffIdx++;
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
+// =============================================================================
+// Public lifecycle.
+// =============================================================================
+
+/**
+ * Запуск polling-loop'а. Если TG_BOT_TOKEN или BOT_ALLOWED_USER_IDS не задан —
+ * warn + return (D-04). Контракт со стороны run.ts (Plan 3): startBot НЕ throw'ает
+ * наверх — внутренний try/catch логирует финальный crash. Resilience обеспечивается
+ * exp.backoff внутри pollLoop. Run.ts вызывает startBot() как fire-and-forget
+ * с outer try/catch только для финального alert (без restart-loop'а).
+ */
+export async function startBot(): Promise<void> {
+  const token = process.env.TG_BOT_TOKEN;
+  const allowlistRaw = process.env.BOT_ALLOWED_USER_IDS;
+  // D-04: симметрично src/alert.ts:23-32 — нет env → warn + return, daemon живёт.
+  if (!token || !allowlistRaw) {
+    log.warn(
+      "[bot] TG_BOT_TOKEN или BOT_ALLOWED_USER_IDS не задан — bot polling выключен"
+    );
+    return;
+  }
+  const allowlist = parseAllowlist(allowlistRaw);
+  if (allowlist.size === 0) {
+    log.warn(
+      "[bot] BOT_ALLOWED_USER_IDS пуст после парсинга — bot polling выключен"
+    );
+    return;
+  }
+  stopRequested = false;
+  pollingActive = true;
+  log.info(`[bot] polling started (allowlist size=${allowlist.size})`);
+  try {
+    await pollLoop(token, allowlist);
+  } catch (err) {
+    log.error(`[bot] poll loop crashed: ${(err as Error).message}`);
+  } finally {
+    pollingActive = false;
+    log.info("[bot] polling stopped");
+  }
+}
+
+/**
+ * Сигнал остановки polling-loop'а. Текущий getUpdates завершится максимум через
+ * POLL_TIMEOUT_SEC секунд (long-polling возвращает результаты раньше при наличии
+ * updates). После выхода из pollLoop pollingActive=false, что shutdown() в run.ts
+ * может опросить через isBotPolling().
+ */
+export function stopBot(): void {
+  stopRequested = true;
+}
+
+/**
+ * Возвращает текущее состояние polling-loop'а. Используется shutdown() в run.ts
+ * для ожидания graceful завершения.
+ */
+export function isBotPolling(): boolean {
+  return pollingActive;
+}
