@@ -23,3 +23,6 @@ data/*
 dist/
 build/
 *.tsbuildinfo
+
+# Claude Code agent worktrees (local, ephemeral)
+.claude/worktrees/
