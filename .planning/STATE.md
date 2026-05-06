@@ -4,8 +4,8 @@ milestone: v4.0
 milestone_name: milestone
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-05-06T05:50:50.556Z"
-last_activity: 2026-05-06 — Completed quick task 260506-cad: чанкование Pass 1 (CLASSIFY_CHUNK_SIZE)
+last_updated: "2026-05-06T07:03:00.000Z"
+last_activity: 2026-05-06 — Completed quick task 260506-dht: drop YAML completely + remove priority field
 progress:
   total_phases: 3
   completed_phases: 0
@@ -75,6 +75,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260504-ew9 | Рефактор summarize.ts двухпроходная LLM-архитектура | 2026-05-04 | fc47b20 | — |
 | 260504-eae | Заголовок дайджеста + per-category DeepSeek лимиты | 2026-05-04 | bb3544e | — |
 | 260506-cad | Чанкование Pass 1 в classifyPosts (CLASSIFY_CHUNK_SIZE) — фикс ECONNRESET на 220+ постах | 2026-05-06 | 6d338e5 | [260506-cad-pass-1-src-summarize-ts-classifyposts-ll](./quick/260506-cad-pass-1-src-summarize-ts-classifyposts-ll/) |
+| 260506-dht | Drop YAML completely + remove priority field — JSON-only storage, `yaml` dep removed, channels.yaml/prod-channels.yaml deleted | 2026-05-06 | 901b897 | [260506-dht-drop-yaml-completely-remove-priority-fie](./quick/260506-dht-drop-yaml-completely-remove-priority-fie/) |
 
 ## Session Continuity
 
