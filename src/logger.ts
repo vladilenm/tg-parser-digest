@@ -2,7 +2,7 @@
 // Пишет через console.log/warn/error; PM2 перехватит в pm2-out.log / pm2-err.log.
 // Без сторонних зависимостей.
 
-import type { RunSummary } from "./types.js";
+import type { RunSummary, WebRunSummary } from "./types.js";
 
 function timestamp(): string {
   return new Date().toISOString();
@@ -31,6 +31,28 @@ export function logRunSummary(s: RunSummary): void {
     `  duration=${dur}s`,
     `  channels: total=${s.channelsTotal} succeeded=${s.channelsSucceeded} skipped=${s.channelsSkipped}`,
     `  posts: collected=${s.postsCollected} deduped=${s.postsDeduped} dropped=${s.postsDropped}`,
+    `  delivered=${s.digestDelivered}`,
+  ];
+  if (s.errors.length > 0) {
+    lines.push("  errors:");
+    for (const e of s.errors) {
+      lines.push(`    - ${e}`);
+    }
+  }
+  console.log(lines.join("\n"));
+}
+
+/**
+ * Phase 3: печатает многострочный summary-блок для WebRunSummary.
+ * Параллельный аналог logRunSummary, отдельно — чтобы оператор различал TG vs web в логах.
+ */
+export function logWebRunSummary(s: WebRunSummary): void {
+  const dur = (s.durationMs / 1000).toFixed(1);
+  const lines = [
+    `[${s.finishedAt}] [web-summary] runId=${s.runId}`,
+    `  duration=${dur}s`,
+    `  websites: total=${s.websitesTotal} succeeded=${s.websitesSucceeded} skipped=${s.websitesSkipped}`,
+    `  items: collected=${s.itemsCollected} dropped=${s.itemsDropped}`,
     `  delivered=${s.digestDelivered}`,
   ];
   if (s.errors.length > 0) {
