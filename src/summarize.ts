@@ -264,8 +264,30 @@ export function groupByBucket(
 }
 
 // ============================================================================
-// classifyPosts — Pass 1. Один LLM-вызов → классификация всех постов.
-// Возвращает массив {url, category, mentions} для каждого поста.
+// chunkArray — pure helper: разбивает массив на чанки фиксированного размера.
+// Экспортирован для юнит-тестов; используется в classifyPosts для разбиения
+// posts перед параллельной классификацией (избегаем client timeout 120s
+// при больших прогонах — 220+ постов).
+// ============================================================================
+export function chunkArray<T>(arr: T[], size: number): T[][] {
+  if (size <= 0 || !Number.isFinite(size)) {
+    throw new Error(`chunkArray: size must be a positive finite number, got ${size}`);
+  }
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
+  }
+  return out;
+}
+
+// ============================================================================
+// classifyPosts — Pass 1. Классификация всех постов по категориям и mentions.
+// При posts.length <= chunkSize — один LLM-вызов (single path, без overhead).
+// При posts.length >  chunkSize — разбиваем на чанки CLASSIFY_CHUNK_SIZE
+// (default 40) и классифицируем параллельно через Promise.allSettled.
+// Антифрагильно: упавший чанк (после внутреннего retry) → log.warn, остальные
+// результаты используются; посты упавшего чанка получают silent-drop в
+// существующей bucketing-логике (текущее корректное поведение).
 // ============================================================================
 async function classifyPosts(
   client: OpenAI,
@@ -273,51 +295,119 @@ async function classifyPosts(
   model: string
 ): Promise<ClassificationEntry[]> {
   log.info(`[summarize] pass1: classifying ${posts.length} posts`);
-  const userMsg = JSON.stringify({ posts: posts.map((p) => ({ url: p.url, text: p.text })) });
 
-  const callLLM = async (): Promise<unknown> => {
-    const startedAt = Date.now();
-    const completion = await client.chat.completions.create({
-      model,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: CLASSIFY_SYSTEM_PROMPT },
-        { role: "user", content: userMsg },
-      ],
+  // Размер чанка: env CLASSIFY_CHUNK_SIZE с защитой от NaN/<=0/undefined.
+  const rawChunkSize = process.env.CLASSIFY_CHUNK_SIZE;
+  const parsedChunkSize = rawChunkSize ? parseInt(rawChunkSize, 10) : NaN;
+  const chunkSize =
+    Number.isFinite(parsedChunkSize) && parsedChunkSize > 0 ? parsedChunkSize : 40;
+
+  // Внутренняя функция: один LLM-вызов на один чанк постов.
+  // Сохраняем существующий retry (parsed → schema check → один retry → throw).
+  const classifyChunk = async (
+    chunkPosts: Post[],
+    chunkIdx: number,
+    totalChunks: number
+  ): Promise<ClassificationEntry[]> => {
+    log.info(
+      `[summarize] pass1: chunk ${chunkIdx + 1}/${totalChunks} (${chunkPosts.length} posts)`
+    );
+    const userMsg = JSON.stringify({
+      posts: chunkPosts.map((p) => ({ url: p.url, text: p.text })),
     });
-    log.info(`[summarize] pass1: response in ${Date.now() - startedAt}ms`);
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    try {
-      return JSON.parse(raw);
-    } catch (err) {
-      throw new Error(`pass1 invalid JSON: ${(err as Error).message}`);
+
+    const callLLM = async (): Promise<unknown> => {
+      const startedAt = Date.now();
+      const completion = await client.chat.completions.create({
+        model,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: CLASSIFY_SYSTEM_PROMPT },
+          { role: "user", content: userMsg },
+        ],
+      });
+      log.info(
+        `[summarize] pass1: chunk ${chunkIdx + 1}/${totalChunks} response in ${Date.now() - startedAt}ms`
+      );
+      const raw = completion.choices[0]?.message?.content ?? "{}";
+      try {
+        return JSON.parse(raw);
+      } catch (err) {
+        throw new Error(
+          `pass1 chunk ${chunkIdx + 1}/${totalChunks} invalid JSON: ${(err as Error).message}`
+        );
+      }
+    };
+
+    let parsedResp = await callLLM();
+    let result = ClassificationResponseSchema.safeParse(parsedResp);
+    if (!result.success) {
+      console.warn(
+        `[summarize] pass1 chunk ${chunkIdx + 1}/${totalChunks} schema fail: ${JSON.stringify(result.error.issues).slice(0, 300)} — retry`
+      );
+      parsedResp = await callLLM();
+      result = ClassificationResponseSchema.safeParse(parsedResp);
+      if (!result.success) {
+        throw new Error(
+          `pass1 chunk ${chunkIdx + 1}/${totalChunks} schema mismatch after retry: ` +
+            JSON.stringify(result.error.issues).slice(0, 500)
+        );
+      }
     }
+    return result.data.classifications as ClassificationEntry[];
   };
 
-  let parsed = await callLLM();
-  let result = ClassificationResponseSchema.safeParse(parsed);
-  if (!result.success) {
-    console.warn(
-      `[summarize] pass1 schema fail: ${JSON.stringify(result.error.issues).slice(0, 300)} — retry`
+  // ---------------------------------------------------------------------------
+  // Single path для маленьких прогонов: без Promise.allSettled overhead.
+  // ---------------------------------------------------------------------------
+  let classifications: ClassificationEntry[];
+  if (posts.length <= chunkSize) {
+    classifications = await classifyChunk(posts, 0, 1);
+  } else {
+    // -------------------------------------------------------------------------
+    // Multi-chunk path: параллельная классификация через Promise.allSettled.
+    // Антифрагильно: упавший чанк → log.warn, посты этого чанка получат
+    // silent-drop в bucketing-логике (текущее корректное поведение).
+    // -------------------------------------------------------------------------
+    const chunks = chunkArray(posts, chunkSize);
+    log.info(
+      `[summarize] pass1: splitting into ${chunks.length} chunks of ~${chunkSize} posts (parallel)`
     );
-    parsed = await callLLM();
-    result = ClassificationResponseSchema.safeParse(parsed);
-    if (!result.success) {
-      throw new Error(
-        "pass1 schema mismatch after retry: " + JSON.stringify(result.error.issues).slice(0, 500)
-      );
+    const settled = await Promise.allSettled(
+      chunks.map((chunk, i) => classifyChunk(chunk, i, chunks.length))
+    );
+    classifications = [];
+    let succeeded = 0;
+    let failed = 0;
+    for (let i = 0; i < settled.length; i++) {
+      const r = settled[i]!;
+      if (r.status === "fulfilled") {
+        classifications.push(...r.value);
+        succeeded++;
+      } else {
+        log.warn(
+          `[summarize] pass1: chunk ${i + 1}/${chunks.length} FAILED — ${(r.reason as Error).message} (skipping ${chunks[i]!.length} posts)`
+        );
+        failed++;
+      }
     }
+    log.info(
+      `[summarize] pass1: chunks ${succeeded}/${chunks.length} succeeded, ${failed} failed`
+    );
   }
 
-  const { classifications } = result.data;
   const categoryBuckets = new Set(classifications.map((c) => c.category).filter(Boolean));
-  const mentionOrphans = classifications.filter((c) => c.category === null && c.mentions.length > 0).length;
-  const relevant = classifications.filter((c) => c.category !== null || c.mentions.length > 0).length;
+  const mentionOrphans = classifications.filter(
+    (c) => c.category === null && c.mentions.length > 0
+  ).length;
+  const relevant = classifications.filter(
+    (c) => c.category !== null || c.mentions.length > 0
+  ).length;
   log.info(
     `[summarize] pass1: ${relevant} relevant posts across ${categoryBuckets.size + (mentionOrphans > 0 ? 1 : 0)} buckets`
   );
 
-  return classifications as ClassificationEntry[];
+  return classifications;
 }
 
 // ============================================================================
