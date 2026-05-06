@@ -8,7 +8,9 @@ import { runPipeline } from "../src/pipeline.js";
 import { logRunSummary } from "../src/logger.js";
 
 try {
-  const summary = await runPipeline();
+  // Phase 3 (D-07): runPipeline принимает runId параметром (генерация поднята из pipeline.ts).
+  const runId = crypto.randomUUID().slice(0, 8);
+  const summary = await runPipeline(runId);
   logRunSummary(summary);
   process.exit(0);
 } catch (err) {
