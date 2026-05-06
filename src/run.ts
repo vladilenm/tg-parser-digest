@@ -4,7 +4,8 @@
 
 import cron from "node-cron";
 import { runPipeline } from "./pipeline.js";
-import { log, logRunSummary } from "./logger.js";
+import { runWebPipeline } from "./web-scraper.js";
+import { log, logRunSummary, logWebRunSummary } from "./logger.js";
 import { sendAlert } from "./alert.js";
 import { startBot, stopBot, isBotPolling } from "./bot.js";
 
@@ -17,30 +18,52 @@ async function tick(): Promise<void> {
     return;
   }
   isRunning = true;
+  // D-07: единый runId на tick — TG и web фильтруются одним grep'ом.
+  const runId = crypto.randomUUID().slice(0, 8);
   try {
     // ANTIBAN: рандомная пауза 0–30 минут перед прогоном, чтобы убрать детерминированную сигнатуру "ровно 20:15".
     const jitterMs = Math.floor(Math.random() * 30 * 60 * 1000);
-    log.info(`[tick] schedule jitter: sleeping ${(jitterMs / 1000).toFixed(0)}s before run`);
+    log.info(`[tick] runId=${runId} schedule jitter: sleeping ${(jitterMs / 1000).toFixed(0)}s before run`);
     await new Promise((r) => setTimeout(r, jitterMs));
-    const summary = await runPipeline();
-    logRunSummary(summary);
-  } catch (err) {
-    const e = err as Error;
-    log.error("pipeline failed", e);
-    // ALERT-02 (D-12, D-13): await — не fire-and-forget, чтобы 60s-окно гарантировалось.
-    // runId внутри pipeline нам недоступен (упало, не дошло до return);
-    // используем отдельный alertId для трассировки.
-    const alertId = crypto.randomUUID().slice(0, 8);
+
+    // ---- D-06: TG-pipeline (existing, unchanged behavior) ----
     try {
-      await sendAlert({
-        stage: "tick",
-        message: e?.message ?? String(err),
-        runId: alertId,
-        stack: e?.stack,
-      });
-    } catch (alertErr) {
-      // D-15: alert-on-alert-fail → log.error, не падаем дальше.
-      log.error("alert send failed", alertErr);
+      const summary = await runPipeline(runId);
+      logRunSummary(summary);
+    } catch (err) {
+      const e = err as Error;
+      log.error(`[tick] runId=${runId} TG pipeline failed`, e);
+      // ALERT-02 (D-13): await — гарантируем 60s окно.
+      try {
+        await sendAlert({
+          stage: "tick",
+          message: e?.message ?? String(err),
+          runId,
+          stack: e?.stack,
+        });
+      } catch (alertErr) {
+        log.error("alert send failed", alertErr);
+      }
+    }
+
+    // ---- D-08: Web-pipeline стартует НЕЗАВИСИМО от TG (даже если TG упал) ----
+    try {
+      const webSummary = await runWebPipeline(runId);
+      logWebRunSummary(webSummary);
+    } catch (err) {
+      // D-09: alert stage="web" — оператор сразу различает TG vs web fail.
+      const e = err as Error;
+      log.error(`[tick] runId=${runId} web pipeline failed`, e);
+      try {
+        await sendAlert({
+          stage: "web",
+          message: e?.message ?? String(err),
+          runId,
+          stack: e?.stack,
+        });
+      } catch (alertErr) {
+        log.error("alert send failed", alertErr);
+      }
     }
   } finally {
     isRunning = false;
