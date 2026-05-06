@@ -311,14 +311,13 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
     }
   } else if (websitesSucceeded > 0) {
     // D-19: summarize() переиспользуется как есть, verifyExtractiveness внутри.
-    const { html, postsDropped } = await summarize(posts);
+    // WR-04: itemsCount — структурированный сигнал из summarize() вместо grep'а
+    // по `• ` в html. Изменение bullet-символа в renderHtml больше не сломает silent.
+    const { html, postsDropped, itemsCount } = await summarize(posts);
     itemsDropped = postsDropped;
 
     // D-14 (content miss): LLM ничего не нашёл — silence в канале.
-    // summarize() возвращает HTML с пустыми секциями всегда; нам нужно отличить
-    // «есть items» от «все пустые». Проверяем наличие `• ` в html (буллет item'а).
-    const hasAnyItem = html.includes("• ");
-    if (!hasAnyItem) {
+    if (itemsCount === 0) {
       log.info(
         `[web-scraper] runId=${runId} no relevant content — silence in channel (D-14)`
       );

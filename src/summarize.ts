@@ -487,7 +487,7 @@ async function summarizeCategory(
 export async function summarize(
   posts: Post[],
   _channelStats?: ChannelStats
-): Promise<{ html: string; postsDropped: number }> {
+): Promise<{ html: string; postsDropped: number; itemsCount: number }> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY не задан.");
@@ -594,5 +594,17 @@ export async function summarize(
   // Render HTML and return
   // ---------------------------------------------------------------------------
   const html = renderHtml(verifiedDigest, posts);
-  return { html, postsDropped: droppedCount };
+
+  // WR-04: structured signal вместо grep по `• ` в HTML.
+  // itemsCount = всего items по 5 категориям + mentions, после verifyExtractiveness.
+  // web-scraper использует это для решения send / silent (D-14).
+  const itemsCount =
+    verifiedDigest.bunker.length +
+    verifiedDigest.oil.length +
+    verifiedDigest.kerosene.length +
+    verifiedDigest.petrochem.length +
+    verifiedDigest.bitumen.length +
+    verifiedDigest.mentions.length;
+
+  return { html, postsDropped: droppedCount, itemsCount };
 }
