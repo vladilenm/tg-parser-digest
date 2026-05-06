@@ -4,6 +4,7 @@ import {
   verifyExtractiveness,
   renderHtml,
   groupByBucket,
+  chunkArray,
 } from "../summarize.js";
 import type { Post, DigestJson, DigestItem } from "../types.js";
 import type { ClassificationEntry } from "../summarize.js";
@@ -228,5 +229,43 @@ describe("groupByBucket", () => {
     expect(buckets.get("kerosene")).toEqual([]);
     expect(buckets.get("petrochem")).toEqual([]);
     expect(buckets.get("bitumen")).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describe("chunkArray")
+// ---------------------------------------------------------------------------
+
+describe("chunkArray", () => {
+  it("returns empty array when input is empty", () => {
+    expect(chunkArray([], 5)).toEqual([]);
+  });
+
+  it("returns single chunk when size > length", () => {
+    expect(chunkArray([1, 2, 3], 5)).toEqual([[1, 2, 3]]);
+  });
+
+  it("splits exactly when length is divisible by size", () => {
+    expect(chunkArray([1, 2, 3, 4, 5, 6], 2)).toEqual([[1, 2], [3, 4], [5, 6]]);
+  });
+
+  it("places remainder in last chunk", () => {
+    expect(chunkArray([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+
+  it("works with size=1 (one element per chunk)", () => {
+    expect(chunkArray([1, 2, 3], 1)).toEqual([[1], [2], [3]]);
+  });
+
+  it("throws on size=0", () => {
+    expect(() => chunkArray([1, 2, 3], 0)).toThrow(/positive finite number/);
+  });
+
+  it("throws on negative size", () => {
+    expect(() => chunkArray([1, 2, 3], -1)).toThrow(/positive finite number/);
+  });
+
+  it("throws on NaN size", () => {
+    expect(() => chunkArray([1, 2, 3], NaN)).toThrow(/positive finite number/);
   });
 });
