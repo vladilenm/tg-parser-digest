@@ -1,6 +1,6 @@
-// src/__tests__/channels-store.test.ts — Vitest для channels-store (Phase 1 STORE-01..03).
-// Покрывает: happy-path load, atomic write, mutex concurrency (Promise.all),
-// auto-migration YAML→JSON, идемпотентность миграции, both-files-missing throw.
+// src/__tests__/channels-store.test.ts — Vitest для channels-store (Phase 1 STORE-01..02).
+// Покрывает: happy-path load, Zod failures, atomic write, mutex concurrency (Promise.all),
+// missing-file throw (no YAML fallback).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
@@ -41,18 +41,6 @@ function writeJson(channels: ChannelEntry[]): void {
   writeFileSync("./channels.json", JSON.stringify({ channels }, null, 2), "utf8");
 }
 
-function writeYaml(channels: ChannelEntry[]): void {
-  // Минимальный валидный YAML — простой случай хватает.
-  const lines = ["channels:"];
-  for (const c of channels) {
-    lines.push(`  - username: "${c.username}"`);
-    if (c.priority !== undefined) {
-      lines.push(`    priority: ${c.priority}`);
-    }
-  }
-  writeFileSync("./channels.yaml", lines.join("\n") + "\n", "utf8");
-}
-
 function readJsonFromDisk(): { channels: ChannelEntry[] } {
   return JSON.parse(readFileSync("./channels.json", "utf8"));
 }
@@ -64,12 +52,12 @@ function readJsonFromDisk(): { channels: ChannelEntry[] } {
 describe("loadChannels (STORE-01)", () => {
   it("читает массив каналов из валидного channels.json", () => {
     writeJson([
-      { username: "ch1", priority: 1 },
+      { username: "ch1" },
       { username: "ch2" },
     ]);
     const result = loadChannels();
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ username: "ch1", priority: 1 });
+    expect(result[0]).toEqual({ username: "ch1" });
     expect(result[1]).toEqual({ username: "ch2" });
   });
 
@@ -90,10 +78,15 @@ describe("loadChannels (STORE-01)", () => {
   it("throws при отсутствии username", () => {
     writeFileSync(
       "./channels.json",
-      JSON.stringify({ channels: [{ priority: 1 }] }),
+      JSON.stringify({ channels: [{}] }),
       "utf8"
     );
     expect(() => loadChannels()).toThrow();
+  });
+
+  it("throws если channels.json отсутствует — никакого YAML-фоллбека", () => {
+    // tmpdir пустой; никакого channels.json (и никакого channels.yaml — он больше не используется).
+    expect(() => loadChannels()).toThrow(/channels\.json not found/);
   });
 });
 
@@ -103,13 +96,13 @@ describe("loadChannels (STORE-01)", () => {
 
 describe("saveChannels + mutex (STORE-02)", () => {
   it("saveChannels пишет валидный JSON с двухпробельным отступом (D-04)", async () => {
-    await saveChannels([{ username: "ch1", priority: 1 }]);
+    await saveChannels([{ username: "ch1" }]);
     const raw = readFileSync("./channels.json", "utf8");
     // D-04: двухпробельный отступ.
     expect(raw).toContain('  "channels"');
     expect(raw).toContain('    "username"');
     // Round-trip через loadChannels.
-    expect(loadChannels()).toEqual([{ username: "ch1", priority: 1 }]);
+    expect(loadChannels()).toEqual([{ username: "ch1" }]);
   });
 
   it("после saveChannels старый .tmp не остаётся на диске (rename, не copy)", async () => {
@@ -120,12 +113,12 @@ describe("saveChannels + mutex (STORE-02)", () => {
 
   it("CRITICAL: Promise.all из двух concurrent mutate сохраняет ОБА канала (success criterion #3)", async () => {
     // Предусловие: стартовый файл с одним каналом.
-    writeJson([{ username: "base", priority: 0 }]);
+    writeJson([{ username: "base" }]);
 
     // Две конкурентные mutate-операции — имитируют race "бот добавляет / cron читает".
     await Promise.all([
-      mutate((current) => [...current, { username: "added-by-bot", priority: 99 }]),
-      mutate((current) => [...current, { username: "added-by-cron", priority: 100 }]),
+      mutate((current) => [...current, { username: "added-by-bot" }]),
+      mutate((current) => [...current, { username: "added-by-cron" }]),
     ]);
 
     // ОБА канала должны оказаться в финальном файле, ни один не потерян.
@@ -181,60 +174,5 @@ describe("saveChannels + mutex (STORE-02)", () => {
     // Следующая операция должна нормально пройти.
     await mutate((current) => [...current, { username: "ch2" }]);
     expect(loadChannels()).toHaveLength(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// STORE-03: auto-migration YAML→JSON
-// ---------------------------------------------------------------------------
-
-describe("auto-migration YAML→JSON (STORE-03)", () => {
-  it("при отсутствии channels.json и наличии channels.yaml — мигрирует и логирует", () => {
-    writeYaml([
-      { username: "ch1", priority: 1 },
-      { username: "ch2", priority: 2 },
-    ]);
-
-    // Spy на console.log (log.info → console.log в src/logger.ts).
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const result = loadChannels();
-
-    expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ username: "ch1", priority: 1 });
-    expect(existsSync("./channels.json")).toBe(true);
-
-    // D-13: лог содержит подстроку "migrated channels.yaml".
-    const logCalls = logSpy.mock.calls.map((c) => c.join(" "));
-    const migrationLog = logCalls.find((line) => line.includes("migrated"));
-    expect(migrationLog).toBeDefined();
-    expect(migrationLog).toContain("channels.yaml");
-    expect(migrationLog).toContain("channels.json");
-    expect(migrationLog).toContain("(2 каналов)");
-  });
-
-  it("после миграции channels.yaml ОСТАЁТСЯ на диске (D-12)", () => {
-    writeYaml([{ username: "ch1" }]);
-    loadChannels();
-    expect(existsSync("./channels.yaml")).toBe(true); // не удалён
-    expect(existsSync("./channels.json")).toBe(true); // создан
-  });
-
-  it("идемпотентность: второй loadChannels() НЕ повторяет миграцию", () => {
-    writeYaml([{ username: "ch1" }]);
-    loadChannels(); // первый — мигрирует
-
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const result = loadChannels(); // второй — НЕ должен мигрировать
-    expect(result).toEqual([{ username: "ch1" }]);
-
-    const logCalls = logSpy.mock.calls.map((c) => c.join(" "));
-    const migrationLog = logCalls.find((line) => line.includes("migrated"));
-    expect(migrationLog).toBeUndefined();
-  });
-
-  it("throws когда оба файла отсутствуют (D-13)", () => {
-    // ни channels.json, ни channels.yaml не созданы — tmpdir пустой.
-    expect(() => loadChannels()).toThrow(/no source file/);
   });
 });
