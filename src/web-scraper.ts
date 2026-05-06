@@ -172,11 +172,16 @@ export function siteToPost(site: WebsiteEntry, text: string): Post | null {
 // formatDateRu — D-10: тот же формат «6 мая 2026 г.» что в TG-сводке.
 // Дублируем (не импортируем) — formatDateRu в summarize.ts private (line 90).
 // Вынос в общий helper отложен — tiny-копия проще, чем модулировать ради 8 строк.
+// WR-05: timeZone: "Europe/Moscow" — иначе под Docker (TZ=UTC default) header
+// «🌐 Веб-источники — 5 мая 2026 г.» уйдёт когда archive.ts уже пишет файл с MSK-датой
+// 2026-05-06 (рассинхрон контента и имени файла). README §«Архив прогонов» прямо говорит
+// «дата по MSK».
 // =============================================================================
 function formatDateRu(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
     day: "numeric",
     month: "short",
     year: "numeric",
