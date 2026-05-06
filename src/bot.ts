@@ -64,6 +64,9 @@ let pollingActive = false;
 /**
  * Парсит BOT_ALLOWED_USER_IDS (comma-separated numeric) в Set<number>.
  * Пустые/нечисловые/неположительные токены отбрасываются.
+ * WR-01: строгий regex — только positive integer без префикса/суффикса
+ * (Number.parseInt("12345abc") даёт 12345 и тихо расширяет allowlist на ошибочное число;
+ * для security-чувствительной env-переменной это потенциально опасно).
  * Экспорт для unit-тестов (Plan 4).
  */
 export function parseAllowlist(envValue: string | undefined): Set<number> {
@@ -72,8 +75,8 @@ export function parseAllowlist(envValue: string | undefined): Set<number> {
     envValue
       .split(",")
       .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .map((s) => Number.parseInt(s, 10))
+      .filter((s) => /^[1-9]\d*$/.test(s))
+      .map((s) => Number(s))
       .filter((n) => Number.isInteger(n) && n > 0)
   );
 }

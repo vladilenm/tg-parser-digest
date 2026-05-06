@@ -114,6 +114,16 @@ describe("parseAllowlist (BOT-04)", () => {
     expect(parseAllowlist("abc,12345")).toEqual(new Set([12345]));
   });
 
+  it('"12345abc" отбрасывается (parseInt strict, WR-01)', () => {
+    // Number.parseInt("12345abc", 10) возвращает 12345 — это бы тихо расширило
+    // allowlist на ошибочное число. Strict regex `/^[1-9]\d*$/` отсекает такие токены.
+    expect(parseAllowlist("12345abc")).toEqual(new Set());
+  });
+
+  it('"12345abc,67890" → только 67890 (префиксное число с буквами отброшено, WR-01)', () => {
+    expect(parseAllowlist("12345abc,67890")).toEqual(new Set([67890]));
+  });
+
   it("0 и отрицательные числа отсеиваются (n > 0)", () => {
     expect(parseAllowlist("0,-1,12345")).toEqual(new Set([12345]));
   });
