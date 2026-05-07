@@ -13,6 +13,7 @@ import { writeRawWeb, writeOutputWeb } from "./archive.js";
 import { sendAlert } from "./alert.js";
 import { log } from "./logger.js";
 import { loadHashCache, commitHashCache } from "./dedup.js";
+import { fetchRssAsPosts } from "./rss.js";
 
 // D-23: путь захардкожен как константа, не из env.
 export const WEBSITES_PATH = "./websites.json";
@@ -278,34 +279,52 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
   const errors: string[] = [];
 
   const websites = loadWebsites();
-  log.info(`[web-scraper] runId=${runId} websites=${websites.length} starting parallel fetch`);
+  const rssCount = websites.filter((w) => w.rss).length;
+  const htmlCount = websites.length - rssCount;
+  log.info(
+    `[web-scraper] runId=${runId} websites=${websites.length} (rss=${rssCount} html=${htmlCount}) starting parallel fetch`
+  );
 
   // D-15: параллельный fetch через Promise.allSettled — изолирует одиночные падения.
   // Per-site progress лог печатается из самой задачи — порядок завершения зависит от latency,
   // что и ожидается при параллельной выгрузке.
+  // Per-site branched flow (Phase 4):
+  //   - site.rss задан → fetchRssAsPosts: array of Posts, code-side date-фильтр.
+  //   - site.rss не задан → fetchSite + extractText + siteToPost: 0 или 1 Post.
   const total = websites.length;
   let completed = 0;
   const results = await Promise.allSettled(
     websites.map(async (site, idx) => {
-      log.info(`[web-scraper] [${idx + 1}/${total}] start: ${site.url}`);
+      const mode = site.rss ? "rss" : "html";
+      log.info(`[web-scraper] [${idx + 1}/${total}] start: ${site.url} (${mode})`);
       try {
-        const html = await fetchSite(site.url);
-        const text = extractText(html);
+        let sitePosts: Post[];
+        if (site.rss) {
+          // RSS path: уже возвращает Post[] (с применённым date-фильтром).
+          sitePosts = await fetchRssAsPosts(site);
+        } else {
+          // HTML fallback path (как было до Phase 4).
+          const html = await fetchSite(site.url);
+          const text = extractText(html);
+          const post = siteToPost(site, text);
+          sitePosts = post ? [post] : [];
+        }
         completed++;
         log.info(
-          `[web-scraper] [${completed}/${total}] done: ${site.url} text=${text.length}ch`
+          `[web-scraper] [${completed}/${total}] done: ${site.url} (${mode}) posts=${sitePosts.length}`
         );
-        return { site, text };
+        return sitePosts;
       } catch (err) {
         completed++;
         const msg = (err as Error)?.message ?? String(err);
-        log.warn(`[web-scraper] [${completed}/${total}] fail: ${site.url} — ${msg}`);
+        log.warn(`[web-scraper] [${completed}/${total}] fail: ${site.url} (${mode}) — ${msg}`);
         throw err;
       }
     })
   );
 
   const posts: Post[] = [];
+  let websitesSucceeded = 0;
   let websitesSkipped = 0;
   for (let i = 0; i < results.length; i++) {
     const r = results[i]!;
@@ -317,18 +336,18 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
       websitesSkipped++;
       continue;
     }
-    const post = siteToPost(site, r.value.text);
-    if (post === null) {
-      // D-05: text too short — already logged inside siteToPost.
+    if (r.value.length === 0) {
+      // HTML: text < 200ch (логируется в siteToPost).
+      // RSS: 0 items в окне свежести (логируется в fetchRssAsPosts).
       websitesSkipped++;
       continue;
     }
-    posts.push(post);
+    websitesSucceeded++;
+    posts.push(...r.value);
   }
 
-  const websitesSucceeded = posts.length;
   log.info(
-    `[web-scraper] runId=${runId} succeeded=${websitesSucceeded} skipped=${websitesSkipped}`
+    `[web-scraper] runId=${runId} succeeded=${websitesSucceeded} skipped=${websitesSkipped} posts=${posts.length}`
   );
 
   // D-20 step 1: пишем raw СРАЗУ, ДО summarize/dedup/LLM (инвариант «сырое сохранено»).

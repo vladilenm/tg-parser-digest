@@ -103,6 +103,16 @@ export const WebsiteEntrySchema = z.object({
       message: "url must be http(s) and not point to private/loopback/link-local network",
     }),
   name: z.string().min(1).optional(),
+  // Опциональный RSS/Atom feed-URL. Если задан — web-pipeline идёт через
+  // src/rss.ts (fetch + parse + per-item date-фильтр) вместо HTML-flow
+  // (fetchSite + extractText). Подчиняется тому же SSRF-фильтру что и url.
+  rss: z
+    .string()
+    .url()
+    .refine(isSafePublicUrl, {
+      message: "rss url must be http(s) and not point to private/loopback/link-local network",
+    })
+    .optional(),
 });
 
 export const WebsitesFileSchema = z.object({
