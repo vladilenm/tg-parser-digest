@@ -56,7 +56,9 @@ const CLASSIFY_SYSTEM_PROMPT = [
 // ============================================================================
 const SUMMARIZE_CATEGORY_PROMPT = [
   "Ты — экстрактивный редактор нефтегазовой ленты.",
-  "На вход получаешь JSON {category, posts:[{url,channelUsername,text}]}.",
+  "На вход получаешь JSON {today, freshnessDays, category, posts:[{url,channelUsername,text}]}.",
+  "  - today — сегодняшняя дата по MSK в формате YYYY-MM-DD (например 2026-05-07).",
+  "  - freshnessDays — окно «свежести» новостей в днях (по умолчанию 30).",
   "",
   "Твоя задача: извлечь из text значимые отраслевые новости в виде items со summary",
   "(1–2 предложения, до 250 символов на русском) и keyQuote (ДОСЛОВНОЙ подстрокой text",
@@ -100,6 +102,23 @@ const SUMMARIZE_CATEGORY_PROMPT = [
   "    значимых отраслевых новостей — выбирай самые важные (промышленный запуск,",
   "    инвестиции, новые продукты, отраслевые события). Маркетинг (правила 8–12)",
   "    в этот лимит не попадает — он отбрасывается ПЕРЕД отбором.",
+  "",
+  "ФИЛЬТР ПО ДАТЕ (старые новости отбрасывай):",
+  "14) Окно свежести: новость считается свежей, если её дата в диапазоне",
+  "    [today − freshnessDays … today]. Сегодняшняя дата (MSK) и окно приходят",
+  "    во входном JSON (поля `today` и `freshnessDays`).",
+  "15) Если рядом с новостью в text явно указана дата в любом формате —",
+  "    «6 мая 2026», «6.05.2026», «06.05.2026», «6 May 2026», «May 6, 2026»,",
+  "    «2026-05-06», «вчера», «сегодня», «на прошлой неделе» — оцени её относительно",
+  "    `today`. Если дата ВНЕ окна свежести (старше today − freshnessDays) — НЕ",
+  "    извлекай эту новость.",
+  "16) Если у новости указан только год, и он отличается от года в `today`",
+  "    (например, в text стоит «2022», а today=2026-05-07) — отбрось как устаревшую.",
+  "17) Если даты у новости НЕТ вообще — допускай (не все сайты их проставляют).",
+  "    НЕ выдумывай дату, если её нет в text.",
+  "18) Не путай «дата публикации» с «датой будущего события» внутри текста",
+  "    (например, «партнёр Russialoppet 2026» в архивной новости 2022-го года —",
+  "    это пост 2022-го, не 2026-го; отбрось по правилу 15/16).",
   "",
   "Верни строгий JSON без markdown:",
   '{"items":[{"summary":"...","keyQuote":"...","url":"...","channel":"...","mentions":["lukoil"]}]}',
@@ -459,7 +478,22 @@ async function summarizeCategory(
   model: string
 ): Promise<CategoryItem[]> {
   log.info(`[summarize] pass2: ${category} — ${posts.length} posts`);
+  // Окно свежести (для фильтра по дате в промпте, правила 14–17). MSK дата из
+  // того же `Intl.DateTimeFormat("en-CA", timeZone="Europe/Moscow")`, что и
+  // в archive.ts — паритет дат файла и контента (см. WR-05).
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const rawFreshness = process.env.SUMMARY_FRESHNESS_DAYS;
+  const parsedFreshness = rawFreshness ? parseInt(rawFreshness, 10) : NaN;
+  const freshnessDays =
+    Number.isFinite(parsedFreshness) && parsedFreshness > 0 ? parsedFreshness : 30;
   const userMsg = JSON.stringify({
+    today,
+    freshnessDays,
     category,
     posts: posts.map((p) => ({ url: p.url, channelUsername: p.channelUsername, text: p.text })),
   });
