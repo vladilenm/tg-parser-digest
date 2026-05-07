@@ -132,8 +132,8 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
 // DAEMON-02: ежедневный прогон в 20:15 MSK + рандомный jitter 0–30 минут (см. tick).
 // DAEMON-04: опция auto-fire-on-start НЕ передаётся — PM2-рестарт не триггерит
 // дайджест вне расписания, прогон идёт только по cron-времени.
-const task = cron.schedule("15 20 * * *", tick, { timezone: "Europe/Moscow" });
-log.info("daemon started, schedule: 15 20 * * * Europe/Moscow + 0–30min jitter");
+const task = cron.schedule("0 21 * * *", tick, { timezone: "Europe/Moscow" });
+log.info("daemon started, schedule: 0 21 * * * Europe/Moscow + 0–30min jitter");
 
 // BOT-05 / D-05: bot polling запускается параллельно с cron.
 // НЕ await — startBot бесконечный (polling-loop), иначе блокирует процесс.
