@@ -365,10 +365,17 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
     // (TG+web) hash-cache из data/hash-cache.json до summarize и коммитим
     // freshKeyQuoteHashes ТОЛЬКО после успешной доставки. Идентично TG-pipeline
     // в pipeline.ts (commitHashCache после sendToChannel).
+    //
+    // applyDateFilter: true — включает в Pass 2 system prompt'е блок «ФИЛЬТР
+    // ПО ДАТЕ» (правила 14–18) с зашитым today MSK + окном [today − N … today].
+    // ТОЛЬКО для web — на index-страницах смешаны свежие и архивные новости
+    // (вплоть до 2022 года), и LLM нужен явный day-window. TG не передаёт —
+    // там окно «24h» отфильтровано через fetchLast24h по timestamp от Telegram.
     const dedupCache = loadHashCache();
     const sizeBefore = dedupCache.size;
     const { html, postsDropped, itemsCount, freshKeyQuoteHashes } = await summarize(posts, {
       dedupCache,
+      applyDateFilter: true,
     });
     itemsDropped = postsDropped;
     log.info(

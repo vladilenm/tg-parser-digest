@@ -52,23 +52,66 @@ const CLASSIFY_SYSTEM_PROMPT = [
 
 // ============================================================================
 // buildSummarizeCategoryPrompt — Pass 2: экстрактивный редактор для одной
-// категории. System prompt строится динамически на каждый прогон, чтобы
-// `today` (MSK YYYY-MM-DD) и окно свежести [windowStart … today] были зашиты
-// прямо в инструкцию, а не приходили в user message — модель так устойчивее
-// держит правило фильтра по дате.
+// категории. System prompt строится динамически на каждый прогон.
+//
+// applyDateFilter — включает фильтр по дате (правила 14–18) с зашитым в
+// инструкцию `today` MSK и окном [windowStart … today]. Используется ТОЛЬКО
+// в web-pipeline, где text — это index-страница со смесью свежих и архивных
+// новостей. TG-pipeline не передаёт `applyDateFilter: true` — там окно
+// фильтруется ПЕРЕД summarize через `fetchLast24h` по timestamp от
+// Telegram API; включать тут date-фильтр опасно — правило 16 (year mismatch)
+// ошибочно срезало бы посты с историческими отсылками типа
+// «в 2022 году компания запустила...».
 // ============================================================================
-function buildSummarizeCategoryPrompt(today: string, freshnessDays: number): string {
-  // today — YYYY-MM-DD по MSK; считаем windowStart = today − freshnessDays.
-  // Парсим строго через UTC midnight, потому что нам нужна арифметика по
-  // календарным дням, а не по wall-clock с DST/TZ-сдвигами.
-  const t = new Date(`${today}T00:00:00Z`);
-  t.setUTCDate(t.getUTCDate() - freshnessDays);
-  const windowStart = t.toISOString().slice(0, 10);
+function buildSummarizeCategoryPrompt(opts: {
+  today: string;
+  freshnessDays: number;
+  applyDateFilter: boolean;
+}): string {
+  const { today, freshnessDays, applyDateFilter } = opts;
+
+  // windowStart нужен только для applyDateFilter; считаем условно.
+  // Арифметика через UTC midnight — нужны календарные дни без DST/TZ-сдвигов.
+  let windowStart = "";
+  if (applyDateFilter) {
+    const t = new Date(`${today}T00:00:00Z`);
+    t.setUTCDate(t.getUTCDate() - freshnessDays);
+    windowStart = t.toISOString().slice(0, 10);
+  }
+
+  const header: string[] = ["Ты — экстрактивный редактор нефтегазовой ленты."];
+  if (applyDateFilter) {
+    header.push(
+      `Сегодняшняя дата (Europe/Moscow): ${today}.`,
+      `Окно свежести новостей: последние ${freshnessDays} дн. — диапазон [${windowStart} … ${today}] включительно.`,
+      "Любая новость с явной датой ВНЕ этого окна — устаревшая. НЕ извлекай её."
+    );
+  }
+
+  const dateBlock: string[] = [];
+  if (applyDateFilter) {
+    dateBlock.push(
+      "",
+      "ФИЛЬТР ПО ДАТЕ (жёсткий — старые новости отбрасывай молча):",
+      `14) Окно свежести зашито выше: [${windowStart} … ${today}]. ${freshnessDays} дн.`,
+      "    На daily-прогоне это ровно «вчера + сегодня». Всё, что вне окна — старое.",
+      "15) Если рядом с новостью в text явно указана дата в ЛЮБОМ формате —",
+      "    «6 мая 2026», «6.05.2026», «06.05.2026», «6 May 2026», «May 6, 2026»,",
+      "    «2026-05-06», «вчера», «сегодня», «на прошлой неделе», «3 дня назад» —",
+      "    оцени её относительно сегодняшней даты выше. Если дата ВНЕ окна — НЕ",
+      "    извлекай новость.",
+      "16) Если у новости указан только год, и он отличается от текущего года —",
+      `    отбрось как устаревшую (текущий год = ${today.slice(0, 4)}).`,
+      "17) Если даты у новости НЕТ вообще — допускай (не все сайты их проставляют).",
+      "    НЕ выдумывай дату, если её нет в text.",
+      "18) Не путай «дата публикации» с «датой будущего события» внутри текста",
+      "    (например, упоминание «партнёр Russialoppet 2026» в архивной новости",
+      "    2022-го года — это пост 2022-го, не 2026-го; отбрось по правилу 15/16)."
+    );
+  }
+
   return [
-    "Ты — экстрактивный редактор нефтегазовой ленты.",
-    `Сегодняшняя дата (Europe/Moscow): ${today}.`,
-    `Окно свежести новостей: последние ${freshnessDays} дн. — диапазон [${windowStart} … ${today}] включительно.`,
-    "Любая новость с явной датой ВНЕ этого окна — устаревшая. НЕ извлекай её.",
+    ...header,
     "",
     "На вход получаешь JSON {category, posts:[{url,channelUsername,text}]}.",
     "",
@@ -114,22 +157,7 @@ function buildSummarizeCategoryPrompt(today: string, freshnessDays: number): str
     "    значимых отраслевых новостей — выбирай самые важные (промышленный запуск,",
     "    инвестиции, новые продукты, отраслевые события). Маркетинг (правила 8–12)",
     "    в этот лимит не попадает — он отбрасывается ПЕРЕД отбором.",
-    "",
-    "ФИЛЬТР ПО ДАТЕ (жёсткий — старые новости отбрасывай молча):",
-    `14) Окно свежести зашито выше: [${windowStart} … ${today}]. ${freshnessDays} дн.`,
-    "    На daily-прогоне это ровно «вчера + сегодня». Всё, что вне окна — старое.",
-    "15) Если рядом с новостью в text явно указана дата в ЛЮБОМ формате —",
-    "    «6 мая 2026», «6.05.2026», «06.05.2026», «6 May 2026», «May 6, 2026»,",
-    "    «2026-05-06», «вчера», «сегодня», «на прошлой неделе», «3 дня назад» —",
-    "    оцени её относительно сегодняшней даты выше. Если дата ВНЕ окна — НЕ",
-    "    извлекай новость.",
-    "16) Если у новости указан только год, и он отличается от текущего года —",
-    `    отбрось как устаревшую (текущий год = ${today.slice(0, 4)}).`,
-    "17) Если даты у новости НЕТ вообще — допускай (не все сайты их проставляют).",
-    "    НЕ выдумывай дату, если её нет в text.",
-    "18) Не путай «дата публикации» с «датой будущего события» внутри текста",
-    "    (например, упоминание «партнёр Russialoppet 2026» в архивной новости",
-    "    2022-го года — это пост 2022-го, не 2026-го; отбрось по правилу 15/16).",
+    ...dateBlock,
     "",
     "Верни строгий JSON без markdown:",
     '{"items":[{"summary":"...","keyQuote":"...","url":"...","channel":"...","mentions":["lukoil"]}]}',
@@ -487,9 +515,15 @@ async function summarizeCategory(
   client: OpenAI,
   category: string,
   posts: Post[],
-  model: string
+  model: string,
+  options?: { applyDateFilter?: boolean }
 ): Promise<CategoryItem[]> {
   log.info(`[summarize] pass2: ${category} — ${posts.length} posts`);
+  // applyDateFilter включается ТОЛЬКО для web-pipeline. TG-pipeline не передаёт
+  // — там окно «24h» уже отфильтровано через fetchLast24h по timestamp от
+  // Telegram API; date-фильтр в промпте ошибочно срезал бы посты с
+  // историческими отсылками вроде «в 2022 году компания запустила...».
+  const applyDateFilter = options?.applyDateFilter ?? false;
   // Окно свежести зашиваем прямо в system prompt (модель так стабильнее держит
   // правило). MSK дата из того же Intl.DateTimeFormat("en-CA",
   // timeZone="Europe/Moscow"), что и в archive.ts — паритет дат файла и
@@ -505,7 +539,7 @@ async function summarizeCategory(
   const parsedFreshness = rawFreshness ? parseInt(rawFreshness, 10) : NaN;
   const freshnessDays =
     Number.isFinite(parsedFreshness) && parsedFreshness > 0 ? parsedFreshness : 2;
-  const systemPrompt = buildSummarizeCategoryPrompt(today, freshnessDays);
+  const systemPrompt = buildSummarizeCategoryPrompt({ today, freshnessDays, applyDateFilter });
   const userMsg = JSON.stringify({
     category,
     posts: posts.map((p) => ({ url: p.url, channelUsername: p.channelUsername, text: p.text })),
@@ -572,6 +606,15 @@ export interface SummarizeOptions {
    * на уровне постов через `dedupAgainstCache` ДО summarize).
    */
   dedupCache?: Set<string>;
+  /**
+   * Включать ли в Pass 2 system prompt'е блок «ФИЛЬТР ПО ДАТЕ» (правила 14–18)
+   * с зашитым `today` MSK и окном [today − N … today]. Используется ТОЛЬКО
+   * web-pipeline. TG-pipeline НЕ передаёт — там окно «24h» уже отфильтровано
+   * через fetchLast24h по timestamp от Telegram API. Применять date-фильтр
+   * к TG-постам опасно: правило 16 (year mismatch) ошибочно срезало бы посты
+   * с историческими отсылками вроде «в 2022 году компания запустила...».
+   */
+  applyDateFilter?: boolean;
 }
 
 export async function summarize(
@@ -638,9 +681,10 @@ export async function summarize(
   // ---------------------------------------------------------------------------
   // Pass 2: parallel summarization — one LLM call per non-empty bucket
   // ---------------------------------------------------------------------------
+  const applyDateFilter = options?.applyDateFilter ?? false;
   const settled = await Promise.allSettled(
     nonEmptyBuckets.map(([category, bucketPosts]) =>
-      summarizeCategory(client, category, bucketPosts, model)
+      summarizeCategory(client, category, bucketPosts, model, { applyDateFilter })
     )
   );
 
