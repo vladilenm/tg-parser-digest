@@ -21,6 +21,7 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY scripts ./scripts
 COPY channels.json ./
+COPY websites.json ./
 
 # Каталог для архивов прогонов (data/raw, data/output, data/dedup-cache).
 # На Timeweb сюда подключается persistent volume через UI; локально — bind mount из docker-compose.
