@@ -11,6 +11,7 @@ import {
   CategoryItemsResponseSchema,
 } from "./schema.js";
 import { log } from "./logger.js";
+import { hashText } from "./dedup.js";
 
 // ============================================================================
 // ChannelStats — опциональная статистика для шапки (будет использована позже)
@@ -484,10 +485,28 @@ async function summarizeCategory(
 //   Assembly: инжектируем category в каждый item, собираем DigestJson
 //   verifyExtractiveness → renderHtml → {html, postsDropped}
 // ============================================================================
+export interface SummarizeOptions {
+  channelStats?: ChannelStats;
+  /**
+   * Cross-run dedup на уровне items: если передан, items с
+   * `hashText(keyQuote)` уже в этом Set отбрасываются ПОСЛЕ verifyExtractiveness
+   * и ДО renderHtml. `freshKeyQuoteHashes` в return содержит хеши доставленных
+   * (новых) items — caller обязан вызвать `commitHashCache` после успешной
+   * доставки. Используется web-pipeline; TG-pipeline не передаёт (там дедуп
+   * на уровне постов через `dedupAgainstCache` ДО summarize).
+   */
+  dedupCache?: Set<string>;
+}
+
 export async function summarize(
   posts: Post[],
-  _channelStats?: ChannelStats
-): Promise<{ html: string; postsDropped: number; itemsCount: number }> {
+  options?: SummarizeOptions
+): Promise<{
+  html: string;
+  postsDropped: number;
+  itemsCount: number;
+  freshKeyQuoteHashes: string[];
+}> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY не задан.");
@@ -597,23 +616,66 @@ export async function summarize(
   const { digest: verifiedDigest, droppedCount } = verifyExtractiveness(digest, posts);
 
   // ---------------------------------------------------------------------------
+  // Optional cross-run dedup на уровне items (web-pipeline). Хеш считается на
+  // нормализованном keyQuote (тот же hashText, что в TG-dedup'е), shared cache
+  // в data/hash-cache.json. Caller commit'ит freshKeyQuoteHashes ПОСЛЕ доставки.
+  // ---------------------------------------------------------------------------
+  const dedupCache = options?.dedupCache;
+  const freshKeyQuoteHashes: string[] = [];
+  let dedupedDigest = verifiedDigest;
+  if (dedupCache) {
+    let dedupHits = 0;
+    const filterDup = (items: DigestItem[]): DigestItem[] => {
+      const out: DigestItem[] = [];
+      for (const item of items) {
+        const h = hashText(item.keyQuote);
+        if (dedupCache.has(h)) {
+          dedupHits++;
+          continue;
+        }
+        // Внутри текущего прогона тоже исключаем повторы, чтобы один и тот же
+        // keyQuote не попал в дайджест дважды (одна новость на двух сайтах).
+        if (freshKeyQuoteHashes.includes(h)) {
+          dedupHits++;
+          continue;
+        }
+        freshKeyQuoteHashes.push(h);
+        out.push(item);
+      }
+      return out;
+    };
+    dedupedDigest = {
+      generatedAt: verifiedDigest.generatedAt,
+      bunker:    filterDup(verifiedDigest.bunker),
+      oil:       filterDup(verifiedDigest.oil),
+      kerosene:  filterDup(verifiedDigest.kerosene),
+      petrochem: filterDup(verifiedDigest.petrochem),
+      bitumen:   filterDup(verifiedDigest.bitumen),
+      mentions:  filterDup(verifiedDigest.mentions),
+    };
+    log.info(
+      `[summarize] dedup: ${dedupHits} items dropped by keyQuote hash-cache (${freshKeyQuoteHashes.length} fresh)`
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Render HTML and return
   // ---------------------------------------------------------------------------
-  const html = renderHtml(verifiedDigest, posts);
+  const html = renderHtml(dedupedDigest, posts);
 
   // WR-04: structured signal вместо grep по `• ` в HTML.
-  // itemsCount = всего items по 5 категориям + mentions, после verifyExtractiveness.
+  // itemsCount = всего items по 5 категориям + mentions, ПОСЛЕ verifyExtractiveness и optional dedup.
   // web-scraper использует это для решения send / silent (D-14).
   const itemsCount =
-    verifiedDigest.bunker.length +
-    verifiedDigest.oil.length +
-    verifiedDigest.kerosene.length +
-    verifiedDigest.petrochem.length +
-    verifiedDigest.bitumen.length +
-    verifiedDigest.mentions.length;
+    dedupedDigest.bunker.length +
+    dedupedDigest.oil.length +
+    dedupedDigest.kerosene.length +
+    dedupedDigest.petrochem.length +
+    dedupedDigest.bitumen.length +
+    dedupedDigest.mentions.length;
 
   log.info(
     `[summarize] done: posts=${posts.length} → items=${itemsCount} dropped=${droppedCount} html=${html.length}ch in ${Date.now() - startedAt}ms`
   );
-  return { html, postsDropped: droppedCount, itemsCount };
+  return { html, postsDropped: droppedCount, itemsCount, freshKeyQuoteHashes };
 }

@@ -12,6 +12,7 @@ import { sendToChannel } from "./deliver.js";
 import { writeRawWeb, writeOutputWeb } from "./archive.js";
 import { sendAlert } from "./alert.js";
 import { log } from "./logger.js";
+import { loadHashCache, commitHashCache } from "./dedup.js";
 
 // D-23: путь захардкожен как константа, не из env.
 export const WEBSITES_PATH = "./websites.json";
@@ -359,8 +360,20 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
     // D-19: summarize() переиспользуется как есть, verifyExtractiveness внутри.
     // WR-04: itemsCount — структурированный сигнал из summarize() вместо grep'а
     // по `• ` в html. Изменение bullet-символа в renderHtml больше не сломает silent.
-    const { html, postsDropped, itemsCount } = await summarize(posts);
+    //
+    // Cross-run dedup на уровне items по hashText(keyQuote): загружаем общий
+    // (TG+web) hash-cache из data/hash-cache.json до summarize и коммитим
+    // freshKeyQuoteHashes ТОЛЬКО после успешной доставки. Идентично TG-pipeline
+    // в pipeline.ts (commitHashCache после sendToChannel).
+    const dedupCache = loadHashCache();
+    const sizeBefore = dedupCache.size;
+    const { html, postsDropped, itemsCount, freshKeyQuoteHashes } = await summarize(posts, {
+      dedupCache,
+    });
     itemsDropped = postsDropped;
+    log.info(
+      `[web-scraper] runId=${runId} dedup: cache=${sizeBefore} fresh=${freshKeyQuoteHashes.length}`
+    );
 
     // D-14 (content miss): LLM ничего не нашёл — silence в канале.
     if (itemsCount === 0) {
@@ -372,6 +385,8 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
       await sendToChannel(finalHtml);
       writeOutputWeb(finalHtml, runId);
       digestDelivered = true;
+      // Hash-cache «съедает» только реально доставленные keyQuote'ы (паритет с TG-pipeline).
+      commitHashCache(freshKeyQuoteHashes, runId);
       log.info(`[web-scraper] runId=${runId} web-digest delivered`);
     }
   } else {
