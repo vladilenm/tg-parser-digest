@@ -1,22 +1,56 @@
 // src/logger.ts — структурированный логгер для daemon-режима.
-// Пишет через console.log/warn/error; PM2 перехватит в pm2-out.log / pm2-err.log.
-// Без сторонних зависимостей.
+// quick-260508-fa1: dual sink — console (PM2 pm2-out.log / pm2-err.log) + appendFileSync
+// в data/run-${YYYY-MM-DD-MSK}.log для post-run диагностики между прогонами.
+// Без сторонних зависимостей. File-write завернут в try/catch — никогда не валим процесс.
 
+import { appendFileSync } from "node:fs";
+import path from "node:path";
 import type { RunSummary, WebRunSummary } from "./types.js";
 
 function timestamp(): string {
   return new Date().toISOString();
 }
 
+// quick-260508-fa1: MSK-дата для имени файла. Совпадает с архивом raw/output (Europe/Moscow).
+function mskDateYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function appendToFile(line: string): void {
+  try {
+    const file = path.join("data", `run-${mskDateYmd()}.log`);
+    appendFileSync(file, line + "\n", "utf8");
+  } catch {
+    // Намеренно глотаем — file-write не должен убить процесс.
+  }
+}
+
+function formatCtx(c: unknown): string {
+  if (c instanceof Error) return `${c.name}: ${c.message}${c.stack ? `\n${c.stack}` : ""}`;
+  if (typeof c === "string") return c;
+  try { return JSON.stringify(c); } catch { return String(c); }
+}
+
 export const log = {
   info(msg: string, ...ctx: unknown[]): void {
-    console.log(`[${timestamp()}] [info] ${msg}`, ...ctx);
+    const line = `[${timestamp()}] [info] ${msg}`;
+    console.log(line, ...ctx);
+    appendToFile(ctx.length > 0 ? `${line} ${ctx.map((c) => formatCtx(c)).join(" ")}` : line);
   },
   warn(msg: string, ...ctx: unknown[]): void {
-    console.warn(`[${timestamp()}] [warn] ${msg}`, ...ctx);
+    const line = `[${timestamp()}] [warn] ${msg}`;
+    console.warn(line, ...ctx);
+    appendToFile(ctx.length > 0 ? `${line} ${ctx.map((c) => formatCtx(c)).join(" ")}` : line);
   },
   error(msg: string, ...ctx: unknown[]): void {
-    console.error(`[${timestamp()}] [error] ${msg}`, ...ctx);
+    const line = `[${timestamp()}] [error] ${msg}`;
+    console.error(line, ...ctx);
+    appendToFile(ctx.length > 0 ? `${line} ${ctx.map((c) => formatCtx(c)).join(" ")}` : line);
   },
 };
 
@@ -39,7 +73,11 @@ export function logRunSummary(s: RunSummary): void {
       lines.push(`    - ${e}`);
     }
   }
-  console.log(lines.join("\n"));
+  // quick-260508-fa1: дублируем summary-блок в file sink. Не маршрутим через log.info,
+  // чтобы не получить `[ts] [info] ` префикс на первой строке (ломает фиксированный формат).
+  const out = lines.join("\n");
+  console.log(out);
+  appendToFile(out);
 }
 
 /**
@@ -61,5 +99,8 @@ export function logWebRunSummary(s: WebRunSummary): void {
       lines.push(`    - ${e}`);
     }
   }
-  console.log(lines.join("\n"));
+  // quick-260508-fa1: дублируем web-summary в file sink (см. logRunSummary).
+  const out = lines.join("\n");
+  console.log(out);
+  appendToFile(out);
 }

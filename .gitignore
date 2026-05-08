@@ -7,6 +7,7 @@ node_modules/
 
 # Logs
 *.log
+# (data/run-*.log already covered by `data/*` below — listed here for grep-ability.)
 
 # Runtime data archives (raw + output + hash-cache)
 data/*
