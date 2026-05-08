@@ -267,12 +267,12 @@ export function verifyExtractiveness(
 // ============================================================================
 
 const SECTION_HEADERS: Array<{ key: keyof Pick<DigestJson, "bunker"|"oil"|"kerosene"|"petrochem"|"bitumen"|"mentions">; header: string }> = [
-  { key: "bunker",    header: "🚢 Бункер" },
-  { key: "oil",       header: "🛢 Масла" },
-  { key: "kerosene",  header: "✈️ Керосин" },
-  { key: "petrochem", header: "⚗️ Нефтехимия" },
-  { key: "bitumen",   header: "🛣 Битум" },
-  { key: "mentions",  header: "🏢 Упоминания компаний" },
+  { key: "bunker",    header: "🚢 #Бункер" },
+  { key: "oil",       header: "🛢 #Масла" },
+  { key: "kerosene",  header: "✈️ #Керосин" },
+  { key: "petrochem", header: "⚗️ #Нефтехимия" },
+  { key: "bitumen",   header: "🛣 #Битум" },
+  { key: "mentions",  header: "🏢 #Компании" },
 ];
 
 const MENTION_LABEL: Record<Mention, string> = {
