@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-08 - Completed quick task 260508-cy1: Форсировать HTTP/1.1 в web-scraper через кастомный undici Agent + browser-like headers
+Last activity: 2026-05-08 - Completed quick task 260508-dde: Задать temperature: 0 в обоих DeepSeek вызовах для квази-детерминистичных прогонов
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -80,6 +80,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260508-b55 | Расширить ключевые слова в CLASSIFY_SYSTEM_PROMPT и заменить gazprom → gazpromneft (метка [ГПН]) | 2026-05-08 | a99d1de | [260508-b55-classify-system-prompt-gazprom-gazpromne](./quick/260508-b55-classify-system-prompt-gazprom-gazpromne/) |
 | 260508-cha | Поднять fetch timeout до 30s и поправить URL для angi.ru | 2026-05-08 | d14e9c4 | [260508-cha-fetch-timeout-30s-url-angi-ru](./quick/260508-cha-fetch-timeout-30s-url-angi-ru/) |
 | 260508-cy1 | Форсировать HTTP/1.1 в web-scraper через кастомный undici Agent + browser-like headers | 2026-05-08 | 7d5dc39 | [260508-cy1-http-1-1-web-scraper-undici-agent-browse](./quick/260508-cy1-http-1-1-web-scraper-undici-agent-browse/) |
+| 260508-dde | Задать temperature: 0 в обоих DeepSeek вызовах для квази-детерминистичных прогонов | 2026-05-08 | 2635a52 | [260508-dde-temperature-0-deepseek](./quick/260508-dde-temperature-0-deepseek/) |
 
 ## Session Continuity
 
