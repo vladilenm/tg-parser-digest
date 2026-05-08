@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-08 - Completed quick task 260508-dde: Задать temperature: 0 в обоих DeepSeek вызовах для квази-детерминистичных прогонов
+Last activity: 2026-05-08 - Completed quick task 260508-eb5: IPv4-only undici Agent + rupec без www + log error.cause в fetchSite
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -81,6 +81,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260508-cha | Поднять fetch timeout до 30s и поправить URL для angi.ru | 2026-05-08 | d14e9c4 | [260508-cha-fetch-timeout-30s-url-angi-ru](./quick/260508-cha-fetch-timeout-30s-url-angi-ru/) |
 | 260508-cy1 | Форсировать HTTP/1.1 в web-scraper через кастомный undici Agent + browser-like headers | 2026-05-08 | 7d5dc39 | [260508-cy1-http-1-1-web-scraper-undici-agent-browse](./quick/260508-cy1-http-1-1-web-scraper-undici-agent-browse/) |
 | 260508-dde | Задать temperature: 0 в обоих DeepSeek вызовах для квази-детерминистичных прогонов | 2026-05-08 | 2635a52 | [260508-dde-temperature-0-deepseek](./quick/260508-dde-temperature-0-deepseek/) |
+| 260508-eb5 | IPv4-only undici Agent + rupec без www + log error.cause в fetchSite | 2026-05-08 | d594f4b | [260508-eb5-ipv4-only-undici-agent-rupec-www-log-err](./quick/260508-eb5-ipv4-only-undici-agent-rupec-www-log-err/) |
 
 ## Session Continuity
 
