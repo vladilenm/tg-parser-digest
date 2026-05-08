@@ -20,10 +20,29 @@ import { Agent } from "undici";
 // проблемы на сайтах с Tengine (neftegaz.ru), Bitrix-стеком и корпоративных WAF.
 // Без него native fetch падает с generic "fetch failed" после успешного TCP/TLS handshake.
 // curl --http1.1 с тем же UA проходит на тех же URL — корневая причина именно в h2-pipeline undici.
+//
+// quick-260508-eb5: connect.family=4 — IPv4-only, обход Node Happy Eyeballs.
+// gazprom-neft.ru / gazpromneft-sm.ru / gazpromneft-oil.ru / g-energy.org /
+// bitum.gazprom-neft.ru / tk418.ru / tatneft.ru не отвечают на IPv6 SYN, и v6-попытка
+// висит до connect-timeout (UND_ERR_CONNECT_TIMEOUT). family:4 пропускает v6-ветку.
 const httpDispatcher = new Agent({
   allowH2: false,
-  connect: { timeout: 10_000 },
+  connect: { timeout: 10_000, family: 4 },
 });
+
+// quick-260508-eb5: форматирование undici-ошибок с раскруткой err.cause.
+// Native fetch заворачивает реальную причину в TypeError("fetch failed").cause.
+// Без раскрутки в логах видно только "fetch failed" — причина (CONNECT_TIMEOUT, TLS, DNS) теряется.
+function formatErrCause(err: unknown): string {
+  const e = err as { message?: string; cause?: { code?: string; message?: string } } | null;
+  const msg = e?.message ?? String(err);
+  const cause = e?.cause;
+  if (cause && (cause.code || cause.message)) {
+    const parts = [cause.code, cause.message].filter(Boolean).join(" — ");
+    return `${msg} (cause: ${parts})`;
+  }
+  return msg;
+}
 
 // D-23: путь захардкожен как константа, не из env.
 export const WEBSITES_PATH = "./websites.json";
@@ -337,7 +356,7 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
         return sitePosts;
       } catch (err) {
         completed++;
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = formatErrCause(err);
         log.warn(`[web-scraper] [${completed}/${total}] fail: ${site.url} (${mode}) — ${msg}`);
         throw err;
       }
@@ -352,7 +371,7 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
     const site = websites[i]!;
     if (r.status === "rejected") {
       // D-18: no retry — лог уже напечатан внутри map-задачи, тут только counter + errors[].
-      const msg = (r.reason as Error)?.message ?? String(r.reason);
+      const msg = formatErrCause(r.reason);
       errors.push(`${site.url}: ${msg}`);
       websitesSkipped++;
       continue;
