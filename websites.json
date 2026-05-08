@@ -43,6 +43,8 @@
     { "url": "https://totachi.com/news/", "name": "totachi" },
     { "url": "https://liquimoly.ru/news/", "name": "liqui-moly" },
     { "url": "https://news.kixxoil.com/", "name": "kixx" },
+    { "url": "https://rolfoil.ru/news/", "name": "rolf-oil" },
+    { "url": "https://lubrigard.ru/press-center", "name": "lubrigard" },
     { "url": "https://antifreezefelix.ru/blog", "name": "felix" },
     { "url": "https://www.zr.ru/tags/masla/", "name": "zr-masla", "rss": "https://www.zr.ru/rss-news/" }
   ]
