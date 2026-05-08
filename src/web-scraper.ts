@@ -14,6 +14,12 @@ import { sendAlert } from "./alert.js";
 import { log } from "./logger.js";
 import { loadHashCache, commitHashCache } from "./dedup.js";
 import { fetchRssAsPosts } from "./rss.js";
+import {
+  loadDailyWebPostsCache,
+  mergeWebPostsByCompositeHash,
+  saveDailyWebPostsCache,
+  todayMsk,
+} from "./web-posts-cache.js";
 import { Agent } from "undici";
 
 // quick-260508-cy1: undici h1-only dispatcher — обходит HTTP/2 frame-parsing и TLS-fingerprint
@@ -435,11 +441,35 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
   // D-20 step 1: пишем raw СРАЗУ, ДО summarize/dedup/LLM (инвариант «сырое сохранено»).
   writeRawWeb(posts, runId);
 
+  // quick-260508-juw: same-day raw-posts cache. Each run scrapes only ~17–19 of 33 sources
+  // successfully; the failing set varies between runs, so info visible at 17:00 disappears at
+  // 18:00 if we don't carry it forward. We merge this run's posts with everything seen earlier
+  // today (same MSK date), feed the union to summarize(), and persist the union back.
+  // The hash-cache.json (delivered keyQuotes) below is UNCHANGED — that layer continues to
+  // filter already-shipped items so the digest grows incrementally over the day.
+  const mskDate = todayMsk();
+  const cachedPosts = loadDailyWebPostsCache(mskDate);
+  const mergedCachedPosts = mergeWebPostsByCompositeHash(cachedPosts, posts);
+  const mergedPosts: Post[] = mergedCachedPosts.map((c) => ({
+    channelUsername: c.channelUsername,
+    messageId: 0,
+    postedAt: c.ts,
+    text: c.text,
+    url: c.url,
+  }));
+  log.info(
+    `[web-scraper] runId=${runId} web-posts-cache: cached=${cachedPosts.length} fresh=${posts.length} merged=${mergedPosts.length}`
+  );
+  // Persist union BEFORE summarize so a crash mid-LLM doesn't lose the merge.
+  saveDailyWebPostsCache(mskDate, mergedCachedPosts);
+
   let digestDelivered = false;
   let itemsDropped = 0;
 
   // D-13 (technical fail): все сайты пропустились — placeholder + alert.
-  if (websitesSucceeded === 0 && websites.length > 0) {
+  // quick-260508-juw: only send placeholder when BOTH this run had no successes AND
+  // nothing is in the same-day cache (i.e. earlier-run posts can still feed summarize).
+  if (websitesSucceeded === 0 && websites.length > 0 && mergedPosts.length === 0) {
     const placeholder = buildPlaceholderHtml(websites.length);
     log.warn(
       `[web-scraper] runId=${runId} all ${websites.length} sites skipped or failed — sending placeholder`
@@ -457,7 +487,7 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
     } catch (alertErr) {
       log.error("[web-scraper] alert send failed", alertErr);
     }
-  } else if (websitesSucceeded > 0) {
+  } else if (mergedPosts.length > 0) {
     // D-19: summarize() переиспользуется как есть, verifyExtractiveness внутри.
     // WR-04: itemsCount — структурированный сигнал из summarize() вместо grep'а
     // по `• ` в html. Изменение bullet-символа в renderHtml больше не сломает silent.
@@ -474,7 +504,7 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
     // там окно «24h» отфильтровано через fetchLast24h по timestamp от Telegram.
     const dedupCache = loadHashCache();
     const sizeBefore = dedupCache.size;
-    const { html, postsDropped, itemsCount, freshKeyQuoteHashes } = await summarize(posts, {
+    const { html, postsDropped, itemsCount, freshKeyQuoteHashes } = await summarize(mergedPosts, {
       dedupCache,
       applyDateFilter: true,
     });
