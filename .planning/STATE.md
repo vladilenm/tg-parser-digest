@@ -95,3 +95,4 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 
 ---
 *State updated: 2026-05-05 — v4.0 roadmap created, Phase 1 ready to plan*
+| 2026-05-08 | fast | Pass BOT_ALLOWED_USER_IDS into docker container | ✅ |
