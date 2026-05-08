@@ -3,7 +3,7 @@
     { "url": "https://oilcapital.ru/" },
     { "url": "https://neftegaz.ru/news/", "name": "neftegaz" },
     { "url": "https://rupec.ru/news/" },
-    { "url": "https://oilexp.ru/news" },
+    { "url": "https://www.oilexp.ru/news/" },
     { "url": "https://www.angi.ru/" },
 
     { "url": "https://rosneft.ru/press/news/", "name": "rosneft", "rss": "https://rosneft.ru/press/news/rss" },

@@ -30,6 +30,24 @@ const httpDispatcher = new Agent({
   connect: { timeout: 10_000, family: 4 },
 });
 
+// quick-260508-fa1: narrow host-allowlist dispatcher for sites with broken cert chains.
+// neftegaz.ru serves an incomplete cert chain → fetch fails with UNABLE_TO_VERIFY_LEAF_SIGNATURE.
+// Intentionally NARROW: only used for neftegaz.ru hostname (see fetchSite below). Do NOT
+// promote to global NODE_TLS_REJECT_UNAUTHORIZED=0 — that would weaken every fetch in the run.
+const httpDispatcherInsecure = new Agent({
+  allowH2: false,
+  connect: { timeout: 10_000, family: 4, rejectUnauthorized: false },
+});
+
+// quick-260508-fa1: одно-попыточный retry для transient network errors.
+// Целимся в undici-классы (UND_ERR_*) и низкоуровневые socket-сбои (ECONNRESET, ETIMEDOUT).
+// HTTP non-2xx — НЕ transient: уже throw'ится как `HTTP ${status}` без cause-кода.
+function isRetriableFetchError(err: unknown): boolean {
+  const code = (err as { cause?: { code?: string } } | null)?.cause?.code;
+  if (!code) return false;
+  return code.startsWith("UND_ERR_") || code === "ECONNRESET" || code === "ETIMEDOUT";
+}
+
 // quick-260508-eb5: форматирование undici-ошибок с раскруткой err.cause.
 // Native fetch заворачивает реальную причину в TypeError("fetch failed").cause.
 // Без раскрутки в логах видно только "fetch failed" — причина (CONNECT_TIMEOUT, TLS, DNS) теряется.
@@ -89,71 +107,95 @@ const MAX_REDIRECT_HOPS = 5;
 export async function fetchSite(url: string, timeoutMs?: number): Promise<string> {
   const ms = timeoutMs ?? Number(process.env.WEB_FETCH_TIMEOUT_MS ?? DEFAULT_FETCH_TIMEOUT_MS);
   const userAgent = process.env.WEB_USER_AGENT ?? DEFAULT_USER_AGENT;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  const startMs = Date.now();
   log.info(`[web-scraper] fetch start: ${url} (timeout=${ms}ms)`);
-  try {
-    let currentUrl = url;
-    if (!isSafePublicUrl(currentUrl)) {
-      throw new Error(`unsafe url (private/loopback/non-http): ${currentUrl}`);
-    }
-    let redirects = 0;
-    for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
-      const res = await fetch(currentUrl, {
-        method: "GET",
-        headers: {
-          "user-agent": userAgent,
-          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "accept-language": "ru-RU,ru;q=0.9,en;q=0.8",
-          "sec-fetch-dest": "document",
-          "sec-fetch-mode": "navigate",
-          "sec-fetch-site": "none",
-          "sec-fetch-user": "?1",
-          "upgrade-insecure-requests": "1",
-        },
-        signal: controller.signal,
-        redirect: "manual",
-        // quick-260508-cy1: форсируем HTTP/1.1 через кастомный undici Agent (см. httpDispatcher выше).
-        dispatcher: httpDispatcher,
-      } as RequestInit & { dispatcher?: unknown });
-      // 3xx → ручная revalidation Location.
-      if (res.status >= 300 && res.status < 400) {
-        const location = res.headers.get("location");
-        if (!location) {
-          throw new Error(`HTTP ${res.status} without Location header`);
+  // quick-260508-fa1: 2-iteration retry для transient network errors. AbortController
+  // и timer пересоздаются ВНУТРИ цикла, чтобы таймаут отсчитывался заново на каждой попытке
+  // (иначе медленная первая попытка съест бюджет второй). clearTimeout вызывается и в catch
+  // (до sleep), и в finally — двойной clear безопасен (no-op на уже очищенном id).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    const startMs = Date.now();
+    try {
+      let currentUrl = url;
+      if (!isSafePublicUrl(currentUrl)) {
+        throw new Error(`unsafe url (private/loopback/non-http): ${currentUrl}`);
+      }
+      let redirects = 0;
+      for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+        // quick-260508-fa1: pick insecure dispatcher only for neftegaz.ru (broken cert chain).
+        const hostname = new URL(currentUrl).hostname;
+        const dispatcher =
+          hostname === "neftegaz.ru" || hostname.endsWith(".neftegaz.ru")
+            ? httpDispatcherInsecure
+            : httpDispatcher;
+        const res = await fetch(currentUrl, {
+          method: "GET",
+          headers: {
+            "user-agent": userAgent,
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "accept-language": "ru-RU,ru;q=0.9,en;q=0.8",
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+          },
+          signal: controller.signal,
+          redirect: "manual",
+          // quick-260508-cy1: форсируем HTTP/1.1 через кастомный undici Agent (см. httpDispatcher выше).
+          // quick-260508-fa1: dispatcher выбирается по hostname (insecure для neftegaz.ru).
+          dispatcher,
+        } as RequestInit & { dispatcher?: unknown });
+        // 3xx → ручная revalidation Location.
+        if (res.status >= 300 && res.status < 400) {
+          const location = res.headers.get("location");
+          if (!location) {
+            throw new Error(`HTTP ${res.status} without Location header`);
+          }
+          // Resolve relative redirects against currentUrl (как делает браузер).
+          const nextUrl = new URL(location, currentUrl).toString();
+          if (!isSafePublicUrl(nextUrl)) {
+            throw new Error(`unsafe redirect blocked: ${currentUrl} -> ${nextUrl}`);
+          }
+          if (hop === MAX_REDIRECT_HOPS) {
+            throw new Error(`too many redirects (${MAX_REDIRECT_HOPS + 1}) starting from ${url}`);
+          }
+          log.info(
+            `[web-scraper] fetch redirect ${hop + 1}: HTTP ${res.status} ${currentUrl} → ${nextUrl}`
+          );
+          currentUrl = nextUrl;
+          redirects++;
+          continue;
         }
-        // Resolve relative redirects against currentUrl (как делает браузер).
-        const nextUrl = new URL(location, currentUrl).toString();
-        if (!isSafePublicUrl(nextUrl)) {
-          throw new Error(`unsafe redirect blocked: ${currentUrl} -> ${nextUrl}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
         }
-        if (hop === MAX_REDIRECT_HOPS) {
-          throw new Error(`too many redirects (${MAX_REDIRECT_HOPS + 1}) starting from ${url}`);
-        }
+        const text = await res.text();
+        const dur = Date.now() - startMs;
+        const ctype = res.headers.get("content-type") ?? "(no content-type)";
         log.info(
-          `[web-scraper] fetch redirect ${hop + 1}: HTTP ${res.status} ${currentUrl} → ${nextUrl}`
+          `[web-scraper] fetch ok: ${url} HTTP ${res.status} ${text.length}ch ${dur}ms type="${ctype}"${redirects > 0 ? ` (${redirects} redirects)` : ""}`
         );
-        currentUrl = nextUrl;
-        redirects++;
+        return text;
+      }
+      // Недостижимо: цикл либо return'ит, либо throw'ит.
+      throw new Error(`fetchSite: redirect loop exit without response (${url})`);
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt === 0 && isRetriableFetchError(err)) {
+        const code = (err as { cause?: { code?: string } } | null)?.cause?.code ?? "unknown";
+        log.warn(`[web-scraper] fetch retry 1/1 after 5000ms: ${url} (cause: ${code})`);
+        await new Promise((r) => setTimeout(r, 5_000));
         continue;
       }
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const text = await res.text();
-      const dur = Date.now() - startMs;
-      const ctype = res.headers.get("content-type") ?? "(no content-type)";
-      log.info(
-        `[web-scraper] fetch ok: ${url} HTTP ${res.status} ${text.length}ch ${dur}ms type="${ctype}"${redirects > 0 ? ` (${redirects} redirects)` : ""}`
-      );
-      return text;
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    // Недостижимо: цикл либо return'ит, либо throw'ит.
-    throw new Error(`fetchSite: redirect loop exit without response (${url})`);
-  } finally {
-    clearTimeout(timer);
   }
+  // Недостижимо: цикл либо return'ит, либо throw'ит.
+  throw new Error(`fetchSite: retry loop exit without response (${url})`);
 }
 
 // =============================================================================
