@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-08 - Completed quick task 260508-fa1: Fix max web sources without proxy and write logs to file
+Last activity: 2026-05-08 - Completed quick task 260508-juw: Add daily raw-posts cache for web-scraper to prevent info loss across same-day runs
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -83,6 +83,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260508-dde | Задать temperature: 0 в обоих DeepSeek вызовах для квази-детерминистичных прогонов | 2026-05-08 | 2635a52 | [260508-dde-temperature-0-deepseek](./quick/260508-dde-temperature-0-deepseek/) |
 | 260508-eb5 | IPv4-only undici Agent + rupec без www + log error.cause в fetchSite | 2026-05-08 | d594f4b | [260508-eb5-ipv4-only-undici-agent-rupec-www-log-err](./quick/260508-eb5-ipv4-only-undici-agent-rupec-www-log-err/) |
 | 260508-fa1 | Fix max web sources without proxy + dual-sink logger (console + data/run-*.log) | 2026-05-08 | 2cc40ba | [260508-fa1-fix-max-web-sources-without-proxy-and-wr](./quick/260508-fa1-fix-max-web-sources-without-proxy-and-wr/) |
+| 260508-juw | Add daily raw-posts cache for web-scraper to prevent info loss across same-day runs | 2026-05-08 | 4b25035 | [260508-juw-add-daily-raw-posts-cache-for-web-scrape](./quick/260508-juw-add-daily-raw-posts-cache-for-web-scrape/) |
 
 ## Session Continuity
 
