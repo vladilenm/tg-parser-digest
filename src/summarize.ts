@@ -414,6 +414,7 @@ async function classifyPosts(
       const startedAt = Date.now();
       const completion = await client.chat.completions.create({
         model,
+        temperature: 0,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: CLASSIFY_SYSTEM_PROMPT },
@@ -554,6 +555,7 @@ async function summarizeCategory(
     const startedAt = Date.now();
     const completion = await client.chat.completions.create({
       model,
+      temperature: 0,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
