@@ -14,6 +14,16 @@ import { sendAlert } from "./alert.js";
 import { log } from "./logger.js";
 import { loadHashCache, commitHashCache } from "./dedup.js";
 import { fetchRssAsPosts } from "./rss.js";
+import { Agent } from "undici";
+
+// quick-260508-cy1: undici h1-only dispatcher — обходит HTTP/2 frame-parsing и TLS-fingerprint
+// проблемы на сайтах с Tengine (neftegaz.ru), Bitrix-стеком и корпоративных WAF.
+// Без него native fetch падает с generic "fetch failed" после успешного TCP/TLS handshake.
+// curl --http1.1 с тем же UA проходит на тех же URL — корневая причина именно в h2-pipeline undici.
+const httpDispatcher = new Agent({
+  allowH2: false,
+  connect: { timeout: 10_000 },
+});
 
 // D-23: путь захардкожен как константа, не из env.
 export const WEBSITES_PATH = "./websites.json";
@@ -73,10 +83,21 @@ export async function fetchSite(url: string, timeoutMs?: number): Promise<string
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
       const res = await fetch(currentUrl, {
         method: "GET",
-        headers: { "user-agent": userAgent, "accept": "text/html,*/*" },
+        headers: {
+          "user-agent": userAgent,
+          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "ru-RU,ru;q=0.9,en;q=0.8",
+          "sec-fetch-dest": "document",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-site": "none",
+          "sec-fetch-user": "?1",
+          "upgrade-insecure-requests": "1",
+        },
         signal: controller.signal,
         redirect: "manual",
-      });
+        // quick-260508-cy1: форсируем HTTP/1.1 через кастомный undici Agent (см. httpDispatcher выше).
+        dispatcher: httpDispatcher,
+      } as RequestInit & { dispatcher?: unknown });
       // 3xx → ручная revalidation Location.
       if (res.status >= 300 && res.status < 400) {
         const location = res.headers.get("location");
