@@ -4,7 +4,7 @@
 import { z } from "zod";
 
 export const CATEGORIES = ["bunker", "oil", "kerosene", "petrochem", "bitumen"] as const;
-export const MENTIONS = ["rosneft", "lukoil", "gazprom"] as const;
+export const MENTIONS = ["rosneft", "lukoil", "gazpromneft"] as const;
 
 export const CategorySchema = z.enum(CATEGORIES);
 export const MentionSchema = z.enum(MENTIONS);
