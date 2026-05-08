@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-06
+Last activity: 2026-05-08 - Completed quick task 260508-b55: Расширить ключевые слова в CLASSIFY_SYSTEM_PROMPT и заменить gazprom → gazpromneft (метка [ГПН])
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -77,6 +77,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260504-eae | Заголовок дайджеста + per-category DeepSeek лимиты | 2026-05-04 | bb3544e | — |
 | 260506-cad | Чанкование Pass 1 в classifyPosts (CLASSIFY_CHUNK_SIZE) — фикс ECONNRESET на 220+ постах | 2026-05-06 | 6d338e5 | [260506-cad-pass-1-src-summarize-ts-classifyposts-ll](./quick/260506-cad-pass-1-src-summarize-ts-classifyposts-ll/) |
 | 260506-dht | Drop YAML completely + remove priority field — JSON-only storage, `yaml` dep removed, channels.yaml/prod-channels.yaml deleted | 2026-05-06 | 901b897 | [260506-dht-drop-yaml-completely-remove-priority-fie](./quick/260506-dht-drop-yaml-completely-remove-priority-fie/) |
+| 260508-b55 | Расширить ключевые слова в CLASSIFY_SYSTEM_PROMPT и заменить gazprom → gazpromneft (метка [ГПН]) | 2026-05-08 | a99d1de | [260508-b55-classify-system-prompt-gazprom-gazpromne](./quick/260508-b55-classify-system-prompt-gazprom-gazpromne/) |
 
 ## Session Continuity
 
