@@ -4,7 +4,7 @@
     { "url": "https://neftegaz.ru/news/", "name": "neftegaz" },
     { "url": "https://www.rupec.ru/news/" },
     { "url": "https://oilexp.ru/news" },
-    { "url": "https://www.angi.ru/news/" },
+    { "url": "https://www.angi.ru/" },
 
     { "url": "https://rosneft.ru/press/news/", "name": "rosneft", "rss": "https://rosneft.ru/press/news/rss" },
     { "url": "https://rosneft-lubricants.ru/about/news/", "name": "rosneft-lubricants" },

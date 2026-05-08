@@ -23,7 +23,7 @@ const TEXT_CAP_CHARS = 8000;
 // D-05: minimum для валидного сайта — на нормализованном тексте до cap'а.
 const MIN_TEXT_CHARS = 200;
 // D-16: timeout fetch (env override опционально).
-const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
+const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 // D-17: Chrome/120 UA для обхода bot-blockers на отраслевых сайтах.
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
