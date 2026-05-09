@@ -3,21 +3,22 @@
 // missing-file throw (no YAML fallback).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 // ВАЖНО: каждый тест создаёт изолированный tmpdir и делает process.chdir.
-// channels-store читает "./channels.json" относительно cwd.
+// paths.ts резолвит DATA_DIR через path.resolve("./data") в момент обращения,
+// поэтому per-test chdir автоматически переадресует все записи в tmpdir/data/.
 // Импортируем модуль ОДИН раз (module-level lockChain переживает между тестами,
 // но это OK: каждый тест await'ит свои операции).
 import {
   loadChannels,
   saveChannels,
   mutate,
-  CHANNELS_PATH,
   type ChannelEntry,
 } from "../channels-store.js";
+import { paths } from "../paths.js";
 
 const ORIGINAL_CWD = process.cwd();
 let workdir: string;
@@ -25,6 +26,9 @@ let workdir: string;
 beforeEach(() => {
   workdir = mkdtempSync(join(tmpdir(), "channels-store-test-"));
   process.chdir(workdir);
+  // paths.channelsConfig резолвится в `${workdir}/data/config/channels.json`
+  // — заранее создаём директорию, чтобы writeJson() мог писать.
+  mkdirSync(dirname(paths.channelsConfig), { recursive: true });
 });
 
 afterEach(() => {
@@ -38,11 +42,11 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 function writeJson(channels: ChannelEntry[]): void {
-  writeFileSync("./channels.json", JSON.stringify({ channels }, null, 2), "utf8");
+  writeFileSync(paths.channelsConfig, JSON.stringify({ channels }, null, 2), "utf8");
 }
 
 function readJsonFromDisk(): { channels: ChannelEntry[] } {
-  return JSON.parse(readFileSync("./channels.json", "utf8"));
+  return JSON.parse(readFileSync(paths.channelsConfig, "utf8"));
 }
 
 // ---------------------------------------------------------------------------
@@ -61,23 +65,23 @@ describe("loadChannels (STORE-01)", () => {
     expect(result[1]).toEqual({ username: "ch2" });
   });
 
-  it("CHANNELS_PATH экспортируется как './channels.json'", () => {
-    expect(CHANNELS_PATH).toBe("./channels.json");
+  it("paths.channelsConfig резолвится под DATA_DIR/config/", () => {
+    expect(paths.channelsConfig.endsWith("/data/config/channels.json")).toBe(true);
   });
 
   it("throws при битом JSON-синтаксисе (D-03)", () => {
-    writeFileSync("./channels.json", "{not valid json", "utf8");
+    writeFileSync(paths.channelsConfig, "{not valid json", "utf8");
     expect(() => loadChannels()).toThrow(/failed to parse/);
   });
 
   it("throws при пустом массиве каналов (Zod .min(1))", () => {
-    writeFileSync("./channels.json", JSON.stringify({ channels: [] }), "utf8");
+    writeFileSync(paths.channelsConfig, JSON.stringify({ channels: [] }), "utf8");
     expect(() => loadChannels()).toThrow();
   });
 
   it("throws при отсутствии username", () => {
     writeFileSync(
-      "./channels.json",
+      paths.channelsConfig,
       JSON.stringify({ channels: [{}] }),
       "utf8"
     );
@@ -97,7 +101,7 @@ describe("loadChannels (STORE-01)", () => {
 describe("saveChannels + mutex (STORE-02)", () => {
   it("saveChannels пишет валидный JSON с двухпробельным отступом (D-04)", async () => {
     await saveChannels([{ username: "ch1" }]);
-    const raw = readFileSync("./channels.json", "utf8");
+    const raw = readFileSync(paths.channelsConfig, "utf8");
     // D-04: двухпробельный отступ.
     expect(raw).toContain('  "channels"');
     expect(raw).toContain('    "username"');
@@ -107,8 +111,8 @@ describe("saveChannels + mutex (STORE-02)", () => {
 
   it("после saveChannels старый .tmp не остаётся на диске (rename, не copy)", async () => {
     await saveChannels([{ username: "ch1" }]);
-    expect(existsSync("./channels.json")).toBe(true);
-    expect(existsSync("./channels.json.tmp")).toBe(false);
+    expect(existsSync(paths.channelsConfig)).toBe(true);
+    expect(existsSync(paths.channelsConfig + ".tmp")).toBe(false);
   });
 
   it("CRITICAL: Promise.all из двух concurrent mutate сохраняет ОБА канала (success criterion #3)", async () => {

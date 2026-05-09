@@ -10,9 +10,7 @@ import { writeFileSync, renameSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Post } from "./types.js";
 import { log } from "./logger.js";
-
-const RAW_DIR = "./data/raw";
-const OUTPUT_DIR = "./data/output";
+import { paths } from "./paths.js";
 
 /** D-10: YYYY-MM-DD в Europe/Moscow. Используем Intl.DateTimeFormat без зависимостей. */
 function todayMsk(): string {
@@ -43,7 +41,7 @@ function atomicWriteText(path: string, content: string): void {
  * Вызывается ПЕРЕД dedup и LLM. D-11: перезаписывает существующий файл за тот же день.
  */
 export function writeRaw(posts: Post[], runId: string): void {
-  const path = `${RAW_DIR}/${todayMsk()}.json`;
+  const path = paths.rawTg(todayMsk());
   // Каждый post сериализуется как { username, messageId, text, date, url } (по REQUIREMENTS).
   const payload = posts.map((p) => ({
     username: p.channelUsername,
@@ -62,7 +60,7 @@ export function writeRaw(posts: Post[], runId: string): void {
  * D-11: перезаписывает существующий файл за тот же день.
  */
 export function writeOutput(html: string, runId: string): void {
-  const path = `${OUTPUT_DIR}/${todayMsk()}.md`;
+  const path = paths.outputTg(todayMsk());
   atomicWriteText(path, html);
   log.info(`[archive] runId=${runId} wrote output: ${path} (${html.length} chars)`);
 }
@@ -74,7 +72,7 @@ export function writeOutput(html: string, runId: string): void {
  * D-11: re-run за тот же день перезаписывает файл.
  */
 export function writeRawWeb(posts: Post[], runId: string): void {
-  const path = `${RAW_DIR}/${todayMsk()}-web.json`;
+  const path = paths.rawWeb(todayMsk());
   const payload = posts.map((p) => ({
     username: p.channelUsername,
     messageId: p.messageId,
@@ -93,7 +91,7 @@ export function writeRawWeb(posts: Post[], runId: string): void {
  * D-11: re-run за тот же день перезаписывает файл.
  */
 export function writeOutputWeb(html: string, runId: string): void {
-  const path = `${OUTPUT_DIR}/${todayMsk()}-web.md`;
+  const path = paths.outputWeb(todayMsk());
   atomicWriteText(path, html);
   log.info(`[archive] runId=${runId} wrote output web: ${path} (${html.length} chars)`);
 }

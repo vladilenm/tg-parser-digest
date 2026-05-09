@@ -3,9 +3,10 @@
 // в data/run-${YYYY-MM-DD-MSK}.log для post-run диагностики между прогонами.
 // Без сторонних зависимостей. File-write завернут в try/catch — никогда не валим процесс.
 
-import { appendFileSync } from "node:fs";
-import path from "node:path";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { RunSummary, WebRunSummary } from "./types.js";
+import { paths } from "./paths.js";
 
 function timestamp(): string {
   return new Date().toISOString();
@@ -23,7 +24,8 @@ function mskDateYmd(): string {
 
 function appendToFile(line: string): void {
   try {
-    const file = path.join("data", `run-${mskDateYmd()}.log`);
+    const file = paths.logFile(mskDateYmd());
+    mkdirSync(dirname(file), { recursive: true });
     appendFileSync(file, line + "\n", "utf8");
   } catch {
     // Намеренно глотаем — file-write не должен убить процесс.

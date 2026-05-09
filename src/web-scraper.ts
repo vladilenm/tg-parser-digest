@@ -20,6 +20,7 @@ import {
   saveDailyWebPostsCache,
   todayMsk,
 } from "./web-posts-cache.js";
+import { paths } from "./paths.js";
 import { Agent } from "undici";
 
 // quick-260508-cy1: undici h1-only dispatcher — обходит HTTP/2 frame-parsing и TLS-fingerprint
@@ -68,8 +69,6 @@ function formatErrCause(err: unknown): string {
   return msg;
 }
 
-// D-23: путь захардкожен как константа, не из env.
-export const WEBSITES_PATH = "./websites.json";
 
 // D-04: hard cap на размер cleaned text перед отдачей в LLM.
 const TEXT_CAP_CHARS = 8000;
@@ -86,15 +85,15 @@ const DEFAULT_USER_AGENT =
 // На invalid JSON / Zod fail → throw (ловится в runWebPipeline / tick()).
 // =============================================================================
 export function loadWebsites(): WebsiteEntry[] {
-  if (!existsSync(WEBSITES_PATH)) {
-    throw new Error(`[web-scraper] websites.json not found at ${WEBSITES_PATH}`);
+  if (!existsSync(paths.websitesConfig)) {
+    throw new Error(`[web-scraper] websites.json not found at ${paths.websitesConfig}`);
   }
-  const raw = readFileSync(WEBSITES_PATH, "utf8");
+  const raw = readFileSync(paths.websitesConfig, "utf8");
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`[web-scraper] failed to parse ${WEBSITES_PATH}: ${(err as Error).message}`);
+    throw new Error(`[web-scraper] failed to parse ${paths.websitesConfig}: ${(err as Error).message}`);
   }
   const validated = WebsitesFileSchema.parse(parsed);
   return validated.websites;

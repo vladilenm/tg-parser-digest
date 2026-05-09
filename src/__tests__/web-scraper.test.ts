@@ -3,9 +3,9 @@
 // loadWebsites Zod-throws (T-03-01), fetchSite mock (D-15..D-18), composeWebDigest split-contract (D-12).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import {
   extractText,
   siteToPost,
@@ -13,6 +13,7 @@ import {
   fetchSite,
   composeWebDigest,
 } from "../web-scraper.js";
+import { paths } from "../paths.js";
 
 // =============================================================================
 // extractText — D-01 (cascade), D-02 (cleanup), D-04 (cap)
@@ -131,6 +132,8 @@ describe("loadWebsites (D-22, D-23, T-03-01)", () => {
     originalCwd = process.cwd();
     workDir = mkdtempSync(join(tmpdir(), "loadweb-"));
     process.chdir(workDir);
+    // paths.websitesConfig резолвится в `${workDir}/data/config/websites.json`.
+    mkdirSync(dirname(paths.websitesConfig), { recursive: true });
   });
 
   afterEach(() => {
@@ -143,13 +146,13 @@ describe("loadWebsites (D-22, D-23, T-03-01)", () => {
   });
 
   it("throws on invalid JSON", () => {
-    writeFileSync("websites.json", "{not-valid-json", "utf8");
+    writeFileSync(paths.websitesConfig, "{not-valid-json", "utf8");
     expect(() => loadWebsites()).toThrow(/failed to parse/);
   });
 
   it("throws on Zod fail: non-URL string (T-03-01 SSRF mitigation)", () => {
     writeFileSync(
-      "websites.json",
+      paths.websitesConfig,
       JSON.stringify({ websites: [{ url: "not-a-url" }] }),
       "utf8"
     );
@@ -157,13 +160,13 @@ describe("loadWebsites (D-22, D-23, T-03-01)", () => {
   });
 
   it("throws on empty websites array (Zod min(1))", () => {
-    writeFileSync("websites.json", JSON.stringify({ websites: [] }), "utf8");
+    writeFileSync(paths.websitesConfig, JSON.stringify({ websites: [] }), "utf8");
     expect(() => loadWebsites()).toThrow();
   });
 
   it("returns parsed array on valid input", () => {
     writeFileSync(
-      "websites.json",
+      paths.websitesConfig,
       JSON.stringify({
         websites: [
           { url: "https://x.com/" },

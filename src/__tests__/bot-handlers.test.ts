@@ -20,7 +20,6 @@ import { loadChannels, mutate, type ChannelEntry } from "../channels-store.js";
 // vi.mock — ОДНА точка перехвата channels-store. Все вызовы loadChannels/mutate
 // из src/bot.ts (через прямой import) попадают в эти моки.
 vi.mock("../channels-store.js", () => ({
-  CHANNELS_PATH: "./channels.json",
   loadChannels: vi.fn(),
   mutate: vi.fn(),
   saveChannels: vi.fn(),

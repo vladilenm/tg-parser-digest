@@ -7,8 +7,8 @@ import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "
 import { dirname } from "node:path";
 import type { Post } from "./types.js";
 import { log } from "./logger.js";
+import { paths } from "./paths.js";
 
-const HASH_CACHE_PATH = "./data/hash-cache.json";
 const TTL_DAYS = Number(process.env.HASH_CACHE_TTL_DAYS ?? 14);
 const TTL_MS = TTL_DAYS * 24 * 60 * 60 * 1000;
 
@@ -53,11 +53,11 @@ function atomicWriteJson(path: string, data: unknown): void {
  * Если файла нет или повреждён — возвращаем пустой Set + log.warn.
  */
 export function loadHashCache(): Set<string> {
-  if (!existsSync(HASH_CACHE_PATH)) {
+  if (!existsSync(paths.hashCache)) {
     return new Set();
   }
   try {
-    const raw = readFileSync(HASH_CACHE_PATH, "utf8");
+    const raw = readFileSync(paths.hashCache, "utf8");
     const parsed = JSON.parse(raw) as HashCacheFile;
     if (!parsed || !Array.isArray(parsed.entries)) {
       log.warn(`[dedup] hash-cache: невалидная структура, начинаем заново`);
@@ -85,9 +85,9 @@ export function saveHashCache(existing: Set<string>, newHashes: string[]): void 
   // Им присваивать "сейчас" не имеет смысла — нужен исходный ts.
   // Поэтому при save мы перезагружаем raw-файл, фильтруем как в load (по ts), и добавляем новые.
   let preserved: HashEntry[] = [];
-  if (existsSync(HASH_CACHE_PATH)) {
+  if (existsSync(paths.hashCache)) {
     try {
-      const raw = readFileSync(HASH_CACHE_PATH, "utf8");
+      const raw = readFileSync(paths.hashCache, "utf8");
       const parsed = JSON.parse(raw) as HashCacheFile;
       if (parsed && Array.isArray(parsed.entries)) {
         const cutoff = Date.now() - TTL_MS;
@@ -102,7 +102,7 @@ export function saveHashCache(existing: Set<string>, newHashes: string[]): void 
   }
   const additions: HashEntry[] = newHashes.map((h) => ({ hash: h, ts: now }));
   const merged: HashCacheFile = { entries: [...preserved, ...additions] };
-  atomicWriteJson(HASH_CACHE_PATH, merged);
+  atomicWriteJson(paths.hashCache, merged);
 }
 
 /**

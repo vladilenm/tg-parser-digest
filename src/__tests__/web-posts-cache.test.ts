@@ -34,10 +34,11 @@ import {
   todayMsk,
   type CachedWebPost,
 } from "../web-posts-cache.js";
+import { paths } from "../paths.js";
 import type { Post } from "../types.js";
 
 const MSK_DATE = "2026-05-08";
-const cachePath = (mskDate: string) => `./data/web-posts-${mskDate}.json`;
+const cachePath = (mskDate: string) => paths.webPostsCache(mskDate);
 
 let workDir: string;
 let originalCwd: string;
@@ -96,7 +97,7 @@ describe("loadDailyWebPostsCache (missing/corrupt/valid)", () => {
 
   // Test 3 — corrupt JSON triggers log.warn + returns []
   it("returns [] and logs warn on corrupt JSON", () => {
-    mkdirSync("./data", { recursive: true });
+    mkdirSync(paths.stateDir, { recursive: true });
     writeFileSync(cachePath(MSK_DATE), "{ this is not json", "utf8");
     const result = loadDailyWebPostsCache(MSK_DATE);
     expect(result).toEqual([]);
@@ -105,7 +106,7 @@ describe("loadDailyWebPostsCache (missing/corrupt/valid)", () => {
 
   // Test 4 — wrong-shape (posts not array) returns [] + log.warn
   it("returns [] and logs warn on wrong-shape file (posts not array)", () => {
-    mkdirSync("./data", { recursive: true });
+    mkdirSync(paths.stateDir, { recursive: true });
     writeFileSync(
       cachePath(MSK_DATE),
       JSON.stringify({ version: 2, posts: "not-an-array" }),
@@ -134,7 +135,7 @@ describe("loadDailyWebPostsCache (missing/corrupt/valid)", () => {
         hash: compositeHash("https://b.com/2", "beta"),
       },
     ];
-    mkdirSync("./data", { recursive: true });
+    mkdirSync(paths.stateDir, { recursive: true });
     writeFileSync(
       cachePath(MSK_DATE),
       JSON.stringify({ version: 1, msk_date: MSK_DATE, posts }, null, 2),
@@ -260,14 +261,14 @@ describe("saveDailyWebPostsCache (round-trip / atomic / mkdir)", () => {
       },
     ];
     saveDailyWebPostsCache(MSK_DATE, posts);
-    const files = readdirSync("./data");
+    const files = readdirSync(paths.stateDir);
     expect(files.some((f) => f.endsWith(".tmp"))).toBe(false);
   });
 
-  it("creates ./data/ if missing (Test 11)", () => {
-    expect(existsSync("./data")).toBe(false);
+  it("creates state/ subdir if missing (Test 11)", () => {
+    expect(existsSync(paths.stateDir)).toBe(false);
     saveDailyWebPostsCache(MSK_DATE, []);
-    expect(existsSync("./data")).toBe(true);
+    expect(existsSync(paths.stateDir)).toBe(true);
     expect(existsSync(cachePath(MSK_DATE))).toBe(true);
   });
 });

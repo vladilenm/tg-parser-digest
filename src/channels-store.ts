@@ -4,11 +4,10 @@
 // API: loadChannels (read, no mutex, throws если файла нет), saveChannels (atomic + mutex), mutate (read-modify-write + mutex).
 // CRUD-обёртки (addChannel/removeChannel) — Phase 2 (D-09, рядом с бот-handler'ами).
 
-import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { z } from "zod";
-
-// D-10: единственная константа пути; не из env, не из аргумента.
-export const CHANNELS_PATH = "./channels.json";
+import { paths } from "./paths.js";
 
 // D-01: схема 1:1 как в channels.json — никаких version-обёрток или audit-полей.
 const ChannelEntrySchema = z.object({
@@ -28,18 +27,18 @@ type ChannelsFile = z.infer<typeof ChannelsFileSchema>;
  * D-06: без mutex — POSIX rename(2) гарантирует атомарность.
  */
 export function loadChannels(): ChannelEntry[] {
-  if (!existsSync(CHANNELS_PATH)) {
+  if (!existsSync(paths.channelsConfig)) {
     throw new Error(
-      `[channels-store] channels.json not found at ${CHANNELS_PATH}`
+      `[channels-store] channels.json not found at ${paths.channelsConfig}`
     );
   }
-  const raw = readFileSync(CHANNELS_PATH, "utf8");
+  const raw = readFileSync(paths.channelsConfig, "utf8");
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
     throw new Error(
-      `[channels-store] failed to parse ${CHANNELS_PATH}: ${(err as Error).message}`
+      `[channels-store] failed to parse ${paths.channelsConfig}: ${(err as Error).message}`
     );
   }
   const validated: ChannelsFile = ChannelsFileSchema.parse(parsed);
@@ -56,6 +55,8 @@ export function loadChannels(): ChannelEntry[] {
  * D-04: JSON.stringify(value, null, 2) — двухпробельный отступ как в data/raw/*.json.
  */
 function atomicWriteJson(path: string, value: unknown): void {
+  const dir = dirname(path);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const tmp = path + ".tmp";
   writeFileSync(tmp, JSON.stringify(value, null, 2), "utf8");
   renameSync(tmp, path);
@@ -96,7 +97,7 @@ export function saveChannels(channels: ChannelEntry[]): Promise<void> {
   return withLock(async () => {
     // Валидируем перед записью — гарантия, что на диск не уйдёт битая структура.
     const payload: ChannelsFile = ChannelsFileSchema.parse({ channels });
-    atomicWriteJson(CHANNELS_PATH, payload);
+    atomicWriteJson(paths.channelsConfig, payload);
   });
 }
 
@@ -116,6 +117,6 @@ export function mutate(
     const current = loadChannels();
     const next = await fn(current);
     const payload: ChannelsFile = ChannelsFileSchema.parse({ channels: next });
-    atomicWriteJson(CHANNELS_PATH, payload);
+    atomicWriteJson(paths.channelsConfig, payload);
   });
 }
