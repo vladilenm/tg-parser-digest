@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-08 - Completed quick task 260508-ktu: Fix Pass 2 mentions recall — duplicate Pass 1 keyword lists into buildSummarizeCategoryPrompt so subsidiaries (NIS, ЯНОС, Башнефть, НОРСИ, Litasco) get inline mention prefixes
+Last activity: 2026-05-09 - Completed quick task 260509-k9l: Persistent storage + daily Telegram backup + pre-deploy snapshot (Variant A volume-only)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -86,6 +86,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260508-juw | Add daily raw-posts cache for web-scraper to prevent info loss across same-day runs | 2026-05-08 | 4b25035 | [260508-juw-add-daily-raw-posts-cache-for-web-scrape](./quick/260508-juw-add-daily-raw-posts-cache-for-web-scrape/) |
 | 260508-k8w | Customer feedback batch — Rolf+Lubrigard sources, full company keyword lists, антифриз in oil, hashtag navigation in digest headers | 2026-05-08 | 56a6aac | [260508-k8w-customer-feedback-rename-gazprom-tag-to-](./quick/260508-k8w-customer-feedback-rename-gazprom-tag-to-/) |
 | 260508-ktu | Fix Pass 2 mentions recall — duplicate Pass 1 keyword lists into buildSummarizeCategoryPrompt (NIS/ЯНОС/Башнефть/НОРСИ/Litasco get inline prefixes) | 2026-05-08 | 1f389c1 | [260508-ktu-fix-pass-2-mentions-recall-duplicate-pas](./quick/260508-ktu-fix-pass-2-mentions-recall-duplicate-pas/) |
+| 260509-k9l | Persistent storage + daily Telegram backup + pre-deploy snapshot (Variant A volume-only) — branch `deploy` | 2026-05-09 | 8e5ea41 | [260509-k9l-persistent-storage-daily-telegram-backup](./quick/260509-k9l-persistent-storage-daily-telegram-backup/) |
 
 ## Session Continuity
 
