@@ -9,9 +9,13 @@ node_modules/
 *.log
 # (data/run-*.log already covered by `data/*` below — listed here for grep-ability.)
 
-# Runtime data archives (raw + output + hash-cache)
+# Runtime data archives (config + state + raw + output + logs + backups).
+# Все мутабельные файлы живут под data/ (per docs/db-deploy.md §1).
+# channels.json/websites.json в корне репо — seed-defaults, продолжают версионироваться.
 data/*
 !data/.gitkeep
+# Local pre-deploy snapshots на VDS (создаются deploy.sh, не должны попасть в репо).
+/opt/backups/
 
 # OS
 .DS_Store
