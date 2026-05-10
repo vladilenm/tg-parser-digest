@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-09 - Completed quick task 260509-k9l: Persistent storage + daily Telegram backup + pre-deploy snapshot (Variant A volume-only)
+Last activity: 2026-05-10 - Completed quick task 260510-cla: Прототип статического дашборда для дайджестов
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -87,6 +87,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260508-k8w | Customer feedback batch — Rolf+Lubrigard sources, full company keyword lists, антифриз in oil, hashtag navigation in digest headers | 2026-05-08 | 56a6aac | [260508-k8w-customer-feedback-rename-gazprom-tag-to-](./quick/260508-k8w-customer-feedback-rename-gazprom-tag-to-/) |
 | 260508-ktu | Fix Pass 2 mentions recall — duplicate Pass 1 keyword lists into buildSummarizeCategoryPrompt (NIS/ЯНОС/Башнефть/НОРСИ/Litasco get inline prefixes) | 2026-05-08 | 1f389c1 | [260508-ktu-fix-pass-2-mentions-recall-duplicate-pas](./quick/260508-ktu-fix-pass-2-mentions-recall-duplicate-pas/) |
 | 260509-k9l | Persistent storage + daily Telegram backup + pre-deploy snapshot (Variant A volume-only) — branch `deploy` | 2026-05-09 | 8e5ea41 | [260509-k9l-persistent-storage-daily-telegram-backup](./quick/260509-k9l-persistent-storage-daily-telegram-backup/) |
+| 260510-cla | Прототип статического дашборда для дайджестов (`npm run dashboard` → `data/dashboard/index.html`) | 2026-05-10 | 449e4af | [260510-cla-static-dashboard-prototype](./quick/260510-cla-static-dashboard-prototype/) |
 
 ## Session Continuity
 
