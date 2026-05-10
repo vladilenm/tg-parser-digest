@@ -12,6 +12,7 @@
     "start:once": "node --env-file=.env --import tsx scripts/run-once.ts",
     "start:once:web": "node --env-file=.env --import tsx scripts/run-once-web.ts",
     "discover:rss": "node --import tsx scripts/discover-rss.ts",
+    "dashboard": "tsx scripts/build-dashboard.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
