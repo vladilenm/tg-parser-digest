@@ -4,8 +4,8 @@ milestone: v4.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-05-06T15:59:18.238Z"
-last_activity: 2026-05-06
+last_updated: "2026-05-18T08:24:33.995Z"
+last_activity: 2026-05-18
 progress:
   total_phases: 4
   completed_phases: 4
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-10 - Completed quick task 260510-cla: Прототип статического дашборда для дайджестов
+Last activity: 2026-05-18 - Completed quick task 260518-fug: Добавить ключевое слово Росавтодор в тему битум
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -88,6 +88,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260508-ktu | Fix Pass 2 mentions recall — duplicate Pass 1 keyword lists into buildSummarizeCategoryPrompt (NIS/ЯНОС/Башнефть/НОРСИ/Litasco get inline prefixes) | 2026-05-08 | 1f389c1 | [260508-ktu-fix-pass-2-mentions-recall-duplicate-pas](./quick/260508-ktu-fix-pass-2-mentions-recall-duplicate-pas/) |
 | 260509-k9l | Persistent storage + daily Telegram backup + pre-deploy snapshot (Variant A volume-only) — branch `deploy` | 2026-05-09 | 8e5ea41 | [260509-k9l-persistent-storage-daily-telegram-backup](./quick/260509-k9l-persistent-storage-daily-telegram-backup/) |
 | 260510-cla | Прототип статического дашборда для дайджестов (`npm run dashboard` → `data/dashboard/index.html`) | 2026-05-10 | 449e4af | [260510-cla-static-dashboard-prototype](./quick/260510-cla-static-dashboard-prototype/) |
+| 260518-fug | Добавить ключевое слово «Росавтодор» в категорию bitumen (Pass 1 классификатор) | 2026-05-18 | 11976c5 | [260518-fug-add-rosavtodor-to-bitumen](./quick/260518-fug-add-rosavtodor-to-bitumen/) |
 
 ## Session Continuity
 
