@@ -36,3 +36,4 @@ build/
 # Claude Code agent worktrees (local, ephemeral)
 .claude
 logs.txt
+docs/examples
