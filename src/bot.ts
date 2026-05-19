@@ -302,6 +302,42 @@ async function sendPhotoMultipart(
   }
 }
 
+/**
+ * Fallback для sendPhotoMultipart когда TG отвергает PNG с PHOTO_INVALID_DIMENSIONS
+ * (quick-260519-s1z). Используется ТОЛЬКО из handleSummarizeCommand chart-блока —
+ * отправляет тот же PNG как документ (TG сгенерирует preview без жёстких ограничений
+ * на ratio/dimensions). На !ok — throw, caller ловит во внешнем try/catch.
+ */
+async function sendDocumentMultipart(
+  token: string,
+  chatId: number,
+  bytes: Uint8Array,
+  filename: string,
+  caption: string
+): Promise<void> {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption);
+  const bytesCopy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
+  bytesCopy.set(bytes);
+  form.append(
+    "document",
+    new Blob([bytesCopy], { type: "image/png" }),
+    filename
+  );
+  form.append("reply_markup", JSON.stringify(MAIN_KEYBOARD));
+  const res = await fetch(`${TG_API}/bot${token}/sendDocument`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const responseBody = await res.text();
+    throw new Error(
+      `[bot] sendDocument failed: ${res.status} ${responseBody.slice(0, 300)}`
+    );
+  }
+}
+
 // =============================================================================
 // Upload pipeline helpers (Plan quick-260519-l11).
 // =============================================================================
@@ -553,15 +589,40 @@ export async function handleSummarizeCommand(
     // bonus. generateChartPng сам возвращает null при <3 НПЗ и при ошибках
     // quickchart, но дополнительно защищаемся try/catch на случай неожиданного
     // throw'а (например, multipart sendPhoto вернул 400).
+    //
+    // quick-260519-s1z: quickchart рисует error-PNG (с текстом ошибки внутри),
+    // TG отвергает sendPhoto с 400 PHOTO_INVALID_DIMENSIONS (узкий text-banner
+    // не проходит ratio-валидацию). Inner try/catch: при PHOTO_INVALID_DIMENSIONS
+    // делаем fallback на sendDocument — тот же PNG уходит как файл, юзер видит
+    // причину 400 на превью документа. На любую другую sendPhoto-ошибку —
+    // re-throw во внешний catch (log.warn, handler не падает).
     try {
       const chartPng = await generateChartPng(result);
       if (chartPng) {
-        await sendPhotoMultipart(
-          token,
-          chatId,
-          chartPng,
-          "Δ цены и объёмы по НПЗ (top-10)"
-        );
+        try {
+          await sendPhotoMultipart(
+            token,
+            chatId,
+            chartPng,
+            "Δ цены и объёмы по НПЗ (top-10)"
+          );
+        } catch (photoErr) {
+          const photoMsg = (photoErr as Error).message ?? String(photoErr);
+          if (/PHOTO_INVALID_DIMENSIONS/i.test(photoMsg)) {
+            log.warn(
+              `[bot] sendPhoto rejected with PHOTO_INVALID_DIMENSIONS — falling back to sendDocument: ${photoMsg}`
+            );
+            await sendDocumentMultipart(
+              token,
+              chatId,
+              chartPng,
+              "chart.png",
+              "Δ цены и объёмы по НПЗ (top-10)"
+            );
+          } else {
+            throw photoErr;
+          }
+        }
       }
     } catch (chartErr) {
       log.warn(
