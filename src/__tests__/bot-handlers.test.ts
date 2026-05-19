@@ -520,6 +520,160 @@ describe("handleCommand /remove_channel (BOT-03 inline-keyboard)", () => {
 });
 
 // =============================================================================
+// handleCommand /start (BOT-UI-03)
+// =============================================================================
+
+describe("handleCommand /start (BOT-UI-03)", () => {
+  it("/start от allowlist → приветствие + reply_markup с keyboard 2×2", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/start",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/Привет/i);
+    const rm = calls[0].reply_markup as {
+      keyboard?: Array<Array<{ text: string }>>;
+    };
+    expect(rm.keyboard).toBeDefined();
+    expect(rm.keyboard).toHaveLength(2);
+    expect((rm.keyboard as Array<Array<{ text: string }>>)[0][0].text).toBe(
+      "📊 Статус загрузок"
+    );
+  });
+
+  it("/start@MyBot парсится как /start", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/start@MyBot",
+    };
+    await handleCommand("token", msg, allowlist);
+    expect(fetchCallsTo("sendMessage").length).toBe(1);
+  });
+
+  it("/start от non-allowlist → silent ignore + log [bot] denied: cmd=/start", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 999 },
+      text: "/start",
+    };
+    await handleCommand("token", msg, allowlist);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(consoleLogContains("[bot] denied:")).toBe(true);
+  });
+});
+
+// =============================================================================
+// handleCommand /help (BOT-UI-04)
+// =============================================================================
+
+describe("handleCommand /help (BOT-UI-04)", () => {
+  it("/help → инструкция содержит ключевые слова (xlsx, биржа, FCA, /summarize, /upload_status, /channels)", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/help",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    const t = calls[0].text as string;
+    expect(t).toMatch(/xlsx/i);
+    expect(t).toMatch(/биржа/i);
+    expect(t).toMatch(/FCA/i);
+    expect(t).toContain("/summarize");
+    expect(t).toContain("/upload_status");
+    expect(t).toContain("/channels");
+  });
+});
+
+// =============================================================================
+// handleCommand emoji-button mapping (BOT-UI-05)
+// =============================================================================
+
+describe("handleCommand emoji-button mapping (BOT-UI-05)", () => {
+  it("'📋 Каналы новостей' маршрутизируется как /channels", async () => {
+    mockedLoadChannels.mockReturnValue([{ username: "a" }]);
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "📋 Каналы новостей",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toContain("Каналов:");
+  });
+
+  it("'❓ Помощь' маршрутизируется как /help (инструкция содержит xlsx)", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "❓ Помощь",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/xlsx/i);
+  });
+
+  it("'📊 Статус загрузок' маршрутизируется как /upload_status (текст 'Папка ...')", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "📊 Статус загрузок",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/Папка/);
+  });
+
+  it("'🧠 Сделать сводку' маршрутизируется как /summarize (пустая неделя → 'файлов не загружено')", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "🧠 Сделать сводку",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/файлов не загружено/i);
+  });
+
+  it("обычное текстовое сообщение без / и без эмодзи-кнопки → ignored", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "просто привет",
+    };
+    await handleCommand("token", msg, allowlist);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
 // handleCallbackQuery allowlist (BOT-04, B-5: отдельный describe)
 // =============================================================================
 

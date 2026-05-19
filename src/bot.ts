@@ -567,7 +567,17 @@ export async function handleCommand(
   allowlist: Set<number>
 ): Promise<void> {
   const userId = msg.from?.id;
-  const text = msg.text?.trim() ?? "";
+  const rawText = msg.text?.trim() ?? "";
+  // BOT-UI-05 / D-01: reply-клавиатура шлёт текст кнопки как обычное сообщение
+  // от юзера; нормализуем до /command, чтобы дальше handler работал унифицированно.
+  // Иначе firstWord = "📊", cmd = "📊" — не команда и тихо игнорилось бы.
+  const EMOJI_BUTTON_MAP: Record<string, string> = {
+    "📊 Статус загрузок": "/upload_status",
+    "🧠 Сделать сводку": "/summarize",
+    "📋 Каналы новостей": "/channels",
+    "❓ Помощь": "/help",
+  };
+  const text = EMOJI_BUTTON_MAP[rawText] ?? rawText;
   if (!userId || !text.startsWith("/")) return;
 
   // Извлекаем команду (до пробела или конца) с учётом suffix'а @botname.
@@ -670,6 +680,31 @@ export async function handleCommand(
   if (cmd === "/summarize") {
     // quick-260519-lxu: LLM-narrative от DeepSeek поверх битум-аплоадов недели.
     await handleSummarizeCommand(token, msg);
+    return;
+  }
+  if (cmd === "/start") {
+    // BOT-UI-03: приветствие + reply-клавиатура (MAIN_KEYBOARD приклеит sendReply).
+    await sendReply(
+      token,
+      msg.chat.id,
+      msg.message_id,
+      "Привет! Я бот-помощник по битуму. Доступные действия — на клавиатуре ниже или через меню / слева от поля ввода."
+    );
+    return;
+  }
+  if (cmd === "/help") {
+    // BOT-UI-04: инструкция (xlsx upload + основные команды).
+    const helpText = [
+      "Как пользоваться:",
+      "",
+      "1. Пришлите xlsx-файл (биржа / биржа-объёмы / FCA) — бот распознает тип по A1 и сохранит в data/uploads/YYYY-WW.",
+      "2. После загрузки пары (биржа + FCA) — нажмите «🧠 Сделать сводку» (или /summarize) для LLM-обзора.",
+      "3. «📊 Статус загрузок» (/upload_status) — что лежит в текущей неделе.",
+      "4. «📋 Каналы новостей» (/channels) — управление списком каналов для ежедневного дайджеста (отдельный пайплайн).",
+      "",
+      "Дополнительно: /add_channel @name, /remove_channel @name.",
+    ].join("\n");
+    await sendReply(token, msg.chat.id, msg.message_id, helpText);
     return;
   }
   // Прочие команды игнорируются молча.
