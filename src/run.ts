@@ -8,6 +8,17 @@ import { runWebPipeline } from "./web-scraper.js";
 import { log, logRunSummary, logWebRunSummary } from "./logger.js";
 import { sendAlert } from "./alert.js";
 import { startBot, stopBot, isBotPolling } from "./bot.js";
+import { ensureSeedFiles } from "./seed.js";
+import { backupAndSend } from "./backup.js";
+
+// Persistent storage init (per docs/db-deploy.md §2):
+//   1. mkdir -p ${DATA_DIR}/{config,state,raw,output,logs,backups}
+//   2. seed channels.json/websites.json из ${SEED_DIR} -> ${DATA_DIR}/config/
+//      если их там нет (volume пустой на первом запуске).
+// ДО первого loadChannels (внутри runPipeline) и первого file-append в logger.ts.
+// На fail (нет ни data/config/, ни seed) — daemon не стартует. Это правильно:
+// быстрый fail с понятной ошибкой лучше загадочного падения через час в tick().
+ensureSeedFiles();
 
 // DAEMON-03: mutex от параллельных тиков. In-memory boolean — достаточно для single-process PM2 fork.
 let isRunning = false;
@@ -140,6 +151,23 @@ if (!cron.validate(cronSchedule)) {
 const task = cron.schedule(cronSchedule, tick, { timezone: "Europe/Moscow" });
 log.info(`daemon started, schedule: ${cronSchedule} Europe/Moscow + 0–30min jitter`);
 
+// Per docs/db-deploy.md §3 — daily backup в 03:15 MSK.
+// Работает независимо от tick'а; backupAndSend сам логирует ошибки и не throw'ит.
+const backupTask = cron.schedule(
+  "15 3 * * *",
+  async () => {
+    const backupRunId = crypto.randomUUID().slice(0, 8);
+    log.info(`[backup] runId=${backupRunId} cron tick`);
+    try {
+      await backupAndSend();
+    } catch (err) {
+      log.error(`[backup] runId=${backupRunId} failed`, err);
+    }
+  },
+  { timezone: "Europe/Moscow" }
+);
+log.info("[backup] scheduled: 15 3 * * * Europe/Moscow");
+
 // BOT-05 / D-05: bot polling запускается параллельно с cron.
 // НЕ await — startBot бесконечный (polling-loop), иначе блокирует процесс.
 // void маркирует floating promise намеренно. Контракт startBot: внутри уже
@@ -171,6 +199,7 @@ void (async () => {
 const shutdown = async (signal: string): Promise<void> => {
   log.info(`received ${signal}, stopping cron and bot`);
   task.stop();
+  backupTask.stop();
   // WR-01: abort активный jitter-sleep, чтобы tick() не висел до 30 мин.
   // Если pipeline уже стартовал — abort не повлияет (он только для sleep'а внутри tick).
   activeAbort?.abort();

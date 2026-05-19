@@ -3,16 +3,18 @@
 // loadWebsites Zod-throws (T-03-01), fetchSite mock (D-15..D-18), composeWebDigest split-contract (D-12).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import {
   extractText,
   siteToPost,
   loadWebsites,
   fetchSite,
   composeWebDigest,
+  buildFailedSitesBlock,
 } from "../web-scraper.js";
+import { paths } from "../paths.js";
 
 // =============================================================================
 // extractText — D-01 (cascade), D-02 (cleanup), D-04 (cap)
@@ -131,6 +133,8 @@ describe("loadWebsites (D-22, D-23, T-03-01)", () => {
     originalCwd = process.cwd();
     workDir = mkdtempSync(join(tmpdir(), "loadweb-"));
     process.chdir(workDir);
+    // paths.websitesConfig резолвится в `${workDir}/data/config/websites.json`.
+    mkdirSync(dirname(paths.websitesConfig), { recursive: true });
   });
 
   afterEach(() => {
@@ -143,13 +147,13 @@ describe("loadWebsites (D-22, D-23, T-03-01)", () => {
   });
 
   it("throws on invalid JSON", () => {
-    writeFileSync("websites.json", "{not-valid-json", "utf8");
+    writeFileSync(paths.websitesConfig, "{not-valid-json", "utf8");
     expect(() => loadWebsites()).toThrow(/failed to parse/);
   });
 
   it("throws on Zod fail: non-URL string (T-03-01 SSRF mitigation)", () => {
     writeFileSync(
-      "websites.json",
+      paths.websitesConfig,
       JSON.stringify({ websites: [{ url: "not-a-url" }] }),
       "utf8"
     );
@@ -157,13 +161,13 @@ describe("loadWebsites (D-22, D-23, T-03-01)", () => {
   });
 
   it("throws on empty websites array (Zod min(1))", () => {
-    writeFileSync("websites.json", JSON.stringify({ websites: [] }), "utf8");
+    writeFileSync(paths.websitesConfig, JSON.stringify({ websites: [] }), "utf8");
     expect(() => loadWebsites()).toThrow();
   });
 
   it("returns parsed array on valid input", () => {
     writeFileSync(
-      "websites.json",
+      paths.websitesConfig,
       JSON.stringify({
         websites: [
           { url: "https://x.com/" },
@@ -279,5 +283,57 @@ describe("composeWebDigest (D-12 — contract anchor)", () => {
     const result = composeWebDigest(broken, 1, 1);
     expect(result.startsWith("<b>🌐 Веб-источники")).toBe(true);
     expect(result).toContain("some content without separator");
+  });
+});
+
+// =============================================================================
+// buildFailedSitesBlock — quick-260519-k6c + quick-260519-tmc: блок «⚠️ Не удалось распарсить (N)»
+// Контракт: non-empty → блок только с URL (без reason), empty → "", HTML escape для URL.
+// quick-260519-tmc: reason больше не рендерится — остаётся только в типе для совместимости.
+// =============================================================================
+describe("buildFailedSitesBlock (quick-260519-k6c)", () => {
+  it("A: non-empty — возвращает блок с заголовком и URL-only bullets", () => {
+    const failedSites = [
+      { url: "https://a.example/", reason: "HTTP 500" },
+      {
+        url: "https://b.example/news",
+        reason: "fetch failed (cause: UND_ERR_CONNECT_TIMEOUT — Connect Timeout Error)",
+      },
+    ];
+    const result = buildFailedSitesBlock(failedSites);
+    // Блок начинается с двойного \n\n (для отделения от основного HTML)
+    expect(result.startsWith("\n\n")).toBe(true);
+    // Заголовок с правильным счётчиком
+    expect(result).toContain("<b>⚠️ Не удалось распарсить (2)</b>");
+    // Первый bullet — только URL, без reason
+    expect(result).toContain("• <code>https://a.example/</code>");
+    // Второй bullet — только URL, без reason
+    expect(result).toContain("• <code>https://b.example/news</code>");
+    // Счётчик совпадает с длиной массива
+    expect(result).toContain(`(${failedSites.length})`);
+    // quick-260519-tmc: reason нигде не должен утечь в вывод
+    expect(result).not.toContain("— HTTP 500");
+    expect(result).not.toContain("— fetch failed");
+  });
+
+  it("B: empty input — возвращает пустую строку", () => {
+    const result = buildFailedSitesBlock([]);
+    expect(result).toBe("");
+  });
+
+  it("C: HTML escape — url экранируется, reason не рендерится", () => {
+    const failedSites = [
+      {
+        url: "https://x.example/?a=1&b=2",
+        reason: "<script>alert(1)</script>",
+      },
+    ];
+    const result = buildFailedSitesBlock(failedSites);
+    // & в url должен быть экранирован
+    expect(result).toContain("&amp;");
+    expect(result).not.toContain("&b=2");
+    // quick-260519-tmc: reason не рендерится — ни сырым, ни escaped
+    expect(result).not.toContain("<script>");
+    expect(result).not.toContain("&lt;script&gt;");
   });
 });

@@ -4,8 +4,8 @@ milestone: v4.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-05-06T15:59:18.238Z"
-last_activity: 2026-05-06
+last_updated: "2026-05-19T11:31:37.377Z"
+last_activity: 2026-05-19
 progress:
   total_phases: 4
   completed_phases: 4
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-08 - Completed quick task 260508-ktu: Fix Pass 2 mentions recall — duplicate Pass 1 keyword lists into buildSummarizeCategoryPrompt so subsidiaries (NIS, ЯНОС, Башнефть, НОРСИ, Litasco) get inline mention prefixes
+Last activity: 2026-05-19 - Completed quick task 260519-tmc: Убраны причины ошибок из блока «⚠️ Не удалось распарсить» в web-дайджесте — рендерится только URL
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -86,6 +86,22 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260508-juw | Add daily raw-posts cache for web-scraper to prevent info loss across same-day runs | 2026-05-08 | 4b25035 | [260508-juw-add-daily-raw-posts-cache-for-web-scrape](./quick/260508-juw-add-daily-raw-posts-cache-for-web-scrape/) |
 | 260508-k8w | Customer feedback batch — Rolf+Lubrigard sources, full company keyword lists, антифриз in oil, hashtag navigation in digest headers | 2026-05-08 | 56a6aac | [260508-k8w-customer-feedback-rename-gazprom-tag-to-](./quick/260508-k8w-customer-feedback-rename-gazprom-tag-to-/) |
 | 260508-ktu | Fix Pass 2 mentions recall — duplicate Pass 1 keyword lists into buildSummarizeCategoryPrompt (NIS/ЯНОС/Башнефть/НОРСИ/Litasco get inline prefixes) | 2026-05-08 | 1f389c1 | [260508-ktu-fix-pass-2-mentions-recall-duplicate-pas](./quick/260508-ktu-fix-pass-2-mentions-recall-duplicate-pas/) |
+| 260509-k9l | Persistent storage + daily Telegram backup + pre-deploy snapshot (Variant A volume-only) — branch `deploy` | 2026-05-09 | 8e5ea41 | [260509-k9l-persistent-storage-daily-telegram-backup](./quick/260509-k9l-persistent-storage-daily-telegram-backup/) |
+| 260510-cla | Прототип статического дашборда для дайджестов (`npm run dashboard` → `data/dashboard/index.html`) | 2026-05-10 | 449e4af | [260510-cla-static-dashboard-prototype](./quick/260510-cla-static-dashboard-prototype/) |
+| 260518-fug | Добавить ключевое слово «Росавтодор» в категорию bitumen (Pass 1 классификатор) | 2026-05-18 | 11976c5 | [260518-fug-add-rosavtodor-to-bitumen](./quick/260518-fug-add-rosavtodor-to-bitumen/) |
+| 260519-k6c | Блок «⚠️ Не удалось распарсить» в конце web-дайджеста с перечнем сайтов, к которым не удалось получить доступ | 2026-05-19 | 2b16c14 | [260519-k6c-failed-sites-block](./quick/260519-k6c-failed-sites-block/) |
+| 260519-l11 | Bot xlsx upload flow — auto-detect by A1, save to data/uploads/YYYY-WW, analyze Δ prices first→last + volumes, Markdown report to uploader DM, /upload_status command | 2026-05-19 | e394f4c | [260519-l11-bot-upload-xlsx-flow-auto-detect-by-a1-s](./quick/260519-l11-bot-upload-xlsx-flow-auto-detect-by-a1-s/) |
+| 260519-lxu | /summarize command — DeepSeek narrative over bitumen uploads (биржа + FCA) с группировкой по компаниям (Роснефть/Газпромнефть/ЛУКОЙЛ/Татнефть/независимые) | 2026-05-19 | d86e295 | [260519-lxu-bot-llm-deepseek-narrative-analysisresul](./quick/260519-lxu-bot-llm-deepseek-narrative-analysisresul/) |
+| 260519-na3 | Bot UI — ReplyKeyboard 2×2 (📊 Статус / 🧠 Сводка / 📋 Каналы / ❓ Помощь) + setMyCommands (7 команд) + /start + /help handlers | 2026-05-19 | 19dcb57 | [260519-na3-bot-ui-replykeyboard-2x2-setmycommands-s](./quick/260519-na3-bot-ui-replykeyboard-2x2-setmycommands-s/) |
+| 260519-nxc | Fix week resolution — findLatestWeekWithUploads() в storage.ts; /summarize и /upload_status теперь смотрят в самую свежую непустую неделю в data/uploads/, а не currentMskWeek() | 2026-05-19 | abb9dc2 | [260519-nxc-fix-week-resolution-summarize-upload-sta](./quick/260519-nxc-fix-week-resolution-summarize-upload-sta/) |
+| 260519-ojk | Charts в /summarize — combo bar+line чарт (Δ биржа + Δ FCA + объёмы) через quickchart.io POST /chart/create → sendPhoto в DM после narrative chunks | 2026-05-19 | 279b574 | [260519-ojk-charts-in-summarize-combo-bar-line-chart](./quick/260519-ojk-charts-in-summarize-combo-bar-line-chart/) |
+| 260519-p3g | Fix chart delivery — quickchart POST /chart → PNG bytes → Telegram sendPhoto через FormData/Blob multipart (вместо sendPhoto by URL который TG отказывался скачивать с 400 'failed to get HTTP URL content') | 2026-05-19 | e6f3443 | [260519-p3g-fix-sendphoto-chart-via-multipart-upload](./quick/260519-p3g-fix-sendphoto-chart-via-multipart-upload/) |
+| 260519-pl2 | /summarize chart — read quickchart response body on HTTP !ok (truncated 500ch with `…`) + include в Error message; defensive try/catch вокруг res.text() с `<body unavailable>` fallback. Диагностика 400 теперь видна в логах. | 2026-05-19 | e376510 | [260519-pl2-summarize-chart-log-quickchart-response-](./quick/260519-pl2-summarize-chart-log-quickchart-response-/) |
+| 260519-pwy | chart.ts: при HTTP !ok если body начинается с PNG magic — возвращать bytes вместо throw. Quickchart на невалидный config рисует ошибку текстом на картинке — теперь она едет в TG как обычное фото, причина 400 видна прямо в чате. PNG_MAGIC + hasPngMagic helper, single arrayBuffer read, TextDecoder lossy decode для non-PNG. | 2026-05-19 | 09704e0 | [260519-pwy-chart-ts-http-ok-error-png-bytes-magic-q](./quick/260519-pwy-chart-ts-http-ok-error-png-bytes-magic-q/) |
+| 260519-s1z | bot.ts /summarize chart: добавлен sendDocumentMultipart + inner try/catch в handleSummarizeCommand — на sendPhoto error matching /PHOTO_INVALID_DIMENSIONS/i делаем fallback на /sendDocument (filename chart.png). TG отвергал узкий quickchart error-banner как фото; теперь идёт как файл, preview генерится автоматически. Executor запущен без worktree-isolation после инцидента в pwy. | 2026-05-19 | b0c17f6 | [260519-s1z-bot-summarize-chart-senddocument-fallbac](./quick/260519-s1z-bot-summarize-chart-senddocument-fallbac/) |
+| 260519-swc | Вырезан chart-блок из /summarize handler: убраны import generateChartPng, функции sendPhotoMultipart и sendDocumentMultipart, и весь chart try/catch внутри handleSummarizeCommand. Narrative-only. src/upload/chart.ts и его unit-тесты НЕ тронуты (на полке до следующего раза). −386 строк, 619 тестов зелёные. | 2026-05-19 | feac793 | [260519-swc-remove-chart-block-from-summarize-handle](./quick/260519-swc-remove-chart-block-from-summarize-handle/) |
+| 260519-tbo | /summarize narrative переключён на Telegram HTML: NARRATIVE_SYSTEM_PROMPT просит whitelist `<b>/<i>/<code>` (без `###`/`---`/`**`), новый sendHtml() в bot.ts с parse_mode=HTML, handleSummarizeCommand шлёт parts через sendHtml. sendMarkdown оставлен для upload-pipeline (handleDocument), формат отчётов не тронут. 2601/2601 тестов зелёные. | 2026-05-19 | 5f67c10 | [260519-tbo-llm-narrative-summarize-telegram-html-ma](./quick/260519-tbo-llm-narrative-summarize-telegram-html-ma/) |
+| 260519-tmc | Убраны причины ошибок из блока «⚠️ Не удалось распарсить» в web-дайджесте — `buildFailedSitesBlock` рендерит только URL (`• <code>url</code>`); константа `REASON_MAX_CHARS` удалена; тесты `web-scraper.test.ts` обновлены под новый контракт (3 кейса: формат, escape URL, отсутствие reason в выводе). | 2026-05-19 | 43d04fc | [260519-tmc-url](./quick/260519-tmc-url/) |
 
 ## Session Continuity
 

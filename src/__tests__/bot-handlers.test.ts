@@ -20,10 +20,19 @@ import { loadChannels, mutate, type ChannelEntry } from "../channels-store.js";
 // vi.mock — ОДНА точка перехвата channels-store. Все вызовы loadChannels/mutate
 // из src/bot.ts (через прямой import) попадают в эти моки.
 vi.mock("../channels-store.js", () => ({
-  CHANNELS_PATH: "./channels.json",
   loadChannels: vi.fn(),
   mutate: vi.fn(),
   saveChannels: vi.fn(),
+}));
+
+// Изолируем bot-handlers от реального data/uploads/ — иначе findLatestWeekWithUploads
+// найдёт настоящие dev-загрузки и /summarize пойдёт по happy-path вместо empty-week.
+vi.mock("../upload/storage.js", () => ({
+  findLatestWeekWithUploads: vi.fn(() => null),
+  listWeek: vi.fn(() => ({ hasPrices: false, hasFca: false, hasVolumes: false, lastRunAt: null })),
+  isoWeekFolder: vi.fn(() => "2026-W21"),
+  saveUpload: vi.fn(),
+  writeLastRun: vi.fn(),
 }));
 
 const mockedLoadChannels = vi.mocked(loadChannels);
@@ -369,6 +378,20 @@ describe("handleCommand /channels (BOT-01)", () => {
     // D-09: reply_to_message_id присутствует.
     expect(sendCalls[0].reply_to_message_id).toBe(1);
     expect(sendCalls[0].chat_id).toBe(555);
+    // BOT-UI-01: sendReply теперь по дефолту прикладывает MAIN_KEYBOARD (reply-keyboard 2×2).
+    const rm = sendCalls[0].reply_markup as {
+      keyboard?: Array<Array<{ text: string }>>;
+      resize_keyboard?: boolean;
+      is_persistent?: boolean;
+    };
+    expect(rm).toBeDefined();
+    expect(rm.keyboard).toBeDefined();
+    expect(rm.keyboard).toEqual([
+      [{ text: "📊 Статус загрузок" }, { text: "🧠 Сделать сводку" }],
+      [{ text: "📋 Каналы новостей" }, { text: "❓ Помощь" }],
+    ]);
+    expect(rm.resize_keyboard).toBe(true);
+    expect(rm.is_persistent).toBe(true);
   });
 
   it("/channels с suffix @botname парсится как /channels", async () => {
@@ -484,6 +507,11 @@ describe("handleCommand /remove_channel (BOT-03 inline-keyboard)", () => {
     const callbackData = flatButtons.map((b) => b.callback_data);
     expect(callbackData).toContain("rm:durov:confirm");
     expect(callbackData).toContain("rm:durov:cancel");
+    // BOT-UI-01: для inline-confirm сообщения reply_markup остаётся inline_keyboard,
+    // а reply-keyboard (поле `keyboard`) НЕ перезатёрт (Telegram принял бы только inline).
+    expect(
+      (replyMarkup as unknown as { keyboard?: unknown }).keyboard
+    ).toBeUndefined();
   });
 
   it("/remove_channel без аргумента → usage-подсказка", async () => {
@@ -498,6 +526,160 @@ describe("handleCommand /remove_channel (BOT-03 inline-keyboard)", () => {
     const sendCalls = fetchCallsTo("sendMessage");
     expect(sendCalls.length).toBe(1);
     expect(sendCalls[0].text).toContain("Использование: /remove_channel");
+  });
+});
+
+// =============================================================================
+// handleCommand /start (BOT-UI-03)
+// =============================================================================
+
+describe("handleCommand /start (BOT-UI-03)", () => {
+  it("/start от allowlist → приветствие + reply_markup с keyboard 2×2", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/start",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/Привет/i);
+    const rm = calls[0].reply_markup as {
+      keyboard?: Array<Array<{ text: string }>>;
+    };
+    expect(rm.keyboard).toBeDefined();
+    expect(rm.keyboard).toHaveLength(2);
+    expect((rm.keyboard as Array<Array<{ text: string }>>)[0][0].text).toBe(
+      "📊 Статус загрузок"
+    );
+  });
+
+  it("/start@MyBot парсится как /start", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/start@MyBot",
+    };
+    await handleCommand("token", msg, allowlist);
+    expect(fetchCallsTo("sendMessage").length).toBe(1);
+  });
+
+  it("/start от non-allowlist → silent ignore + log [bot] denied: cmd=/start", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 999 },
+      text: "/start",
+    };
+    await handleCommand("token", msg, allowlist);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(consoleLogContains("[bot] denied:")).toBe(true);
+  });
+});
+
+// =============================================================================
+// handleCommand /help (BOT-UI-04)
+// =============================================================================
+
+describe("handleCommand /help (BOT-UI-04)", () => {
+  it("/help → инструкция содержит ключевые слова (xlsx, биржа, FCA, /summarize, /upload_status, /channels)", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/help",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    const t = calls[0].text as string;
+    expect(t).toMatch(/xlsx/i);
+    expect(t).toMatch(/биржа/i);
+    expect(t).toMatch(/FCA/i);
+    expect(t).toContain("/summarize");
+    expect(t).toContain("/upload_status");
+    expect(t).toContain("/channels");
+  });
+});
+
+// =============================================================================
+// handleCommand emoji-button mapping (BOT-UI-05)
+// =============================================================================
+
+describe("handleCommand emoji-button mapping (BOT-UI-05)", () => {
+  it("'📋 Каналы новостей' маршрутизируется как /channels", async () => {
+    mockedLoadChannels.mockReturnValue([{ username: "a" }]);
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "📋 Каналы новостей",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toContain("Каналов:");
+  });
+
+  it("'❓ Помощь' маршрутизируется как /help (инструкция содержит xlsx)", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "❓ Помощь",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/xlsx/i);
+  });
+
+  it("'📊 Статус загрузок' маршрутизируется как /upload_status (текст 'Папка ...')", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "📊 Статус загрузок",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/Папка/);
+  });
+
+  it("'🧠 Сделать сводку' маршрутизируется как /summarize (пустая неделя → 'файлов не загружено')", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "🧠 Сделать сводку",
+    };
+    await handleCommand("token", msg, allowlist);
+    const calls = fetchCallsTo("sendMessage");
+    expect(calls.length).toBe(1);
+    expect(calls[0].text).toMatch(/файлов не загружено/i);
+  });
+
+  it("обычное текстовое сообщение без / и без эмодзи-кнопки → ignored", async () => {
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "просто привет",
+    };
+    await handleCommand("token", msg, allowlist);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
 

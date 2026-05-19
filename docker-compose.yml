@@ -30,3 +30,16 @@ services:
       CRON_SCHEDULE: ${CRON_SCHEDULE:-}
       BOT_TOKEN_ALERTS: ${BOT_TOKEN_ALERTS:-}
       ALERTS_CHAT_ID: ${ALERTS_CHAT_ID:-}
+      # Persistent storage paths (per docs/db-deploy.md §1, §4). DATA_DIR/SEED_DIR
+      # уже выставлены через ENV в Dockerfile — здесь passthrough для возможности
+      # override снаружи. TG_BACKUP_CHANNEL_ID — отдельный канал для daily-backup'ов;
+      # если не задан, src/backup.ts фоллбэчит на TG_CHANNEL_ID.
+      DATA_DIR: ${DATA_DIR:-/app/data}
+      SEED_DIR: ${SEED_DIR:-/app/seed}
+      TG_BACKUP_CHANNEL_ID: ${TG_BACKUP_CHANNEL_ID:-}
+    volumes:
+      # Persistent data: channels.json/websites.json/hash-cache.json/raw/output/logs/backups.
+      # На VDS: bind mount /opt/tg-parser-demo/data ↔ /app/data.
+      # На Timeweb Cloud Apps: volume через UI с тем же mountPath /app/data —
+      # этот блок может быть проигнорирован sanitizer'ом, но локально работает.
+      - ./data:/app/data

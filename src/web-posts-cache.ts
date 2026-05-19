@@ -19,6 +19,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname } from "node:path";
 import type { Post } from "./types.js";
 import { log } from "./logger.js";
+import { paths } from "./paths.js";
 
 // =============================================================================
 // Types
@@ -69,7 +70,7 @@ export function todayMsk(): string {
 // File path helper
 // =============================================================================
 function cachePath(mskDate: string): string {
-  return `./data/web-posts-${mskDate}.json`;
+  return paths.webPostsCache(mskDate);
 }
 
 // =============================================================================

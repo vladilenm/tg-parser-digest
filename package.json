@@ -12,11 +12,13 @@
     "start:once": "node --env-file=.env --import tsx scripts/run-once.ts",
     "start:once:web": "node --env-file=.env --import tsx scripts/run-once-web.ts",
     "discover:rss": "node --import tsx scripts/discover-rss.ts",
+    "dashboard": "tsx scripts/build-dashboard.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
+    "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.7.3",
     "node-cron": "^3.0.3",
     "openai": "^4.0.0",
