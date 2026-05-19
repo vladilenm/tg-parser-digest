@@ -12,6 +12,7 @@ import {
   loadWebsites,
   fetchSite,
   composeWebDigest,
+  buildFailedSitesBlock,
 } from "../web-scraper.js";
 import { paths } from "../paths.js";
 
@@ -282,5 +283,66 @@ describe("composeWebDigest (D-12 — contract anchor)", () => {
     const result = composeWebDigest(broken, 1, 1);
     expect(result.startsWith("<b>🌐 Веб-источники")).toBe(true);
     expect(result).toContain("some content without separator");
+  });
+});
+
+// =============================================================================
+// buildFailedSitesBlock — quick-260519-k6c: блок «⚠️ Не удалось распарсить (N)»
+// Контракт: non-empty → блок, empty → "", HTML escape применяется к url и reason.
+// =============================================================================
+describe("buildFailedSitesBlock (quick-260519-k6c)", () => {
+  it("A: non-empty — возвращает блок с заголовком и bullets", () => {
+    const failedSites = [
+      { url: "https://a.example/", reason: "HTTP 500" },
+      {
+        url: "https://b.example/news",
+        reason: "fetch failed (cause: UND_ERR_CONNECT_TIMEOUT — Connect Timeout Error)",
+      },
+    ];
+    const result = buildFailedSitesBlock(failedSites);
+    // Блок начинается с двойного \n\n (для отделения от основного HTML)
+    expect(result.startsWith("\n\n")).toBe(true);
+    // Заголовок с правильным счётчиком
+    expect(result).toContain("<b>⚠️ Не удалось распарсить (2)</b>");
+    // Первый bullet
+    expect(result).toContain("• <code>https://a.example/</code> — HTTP 500");
+    // Второй bullet
+    expect(result).toContain("• <code>https://b.example/news</code> — fetch failed");
+    // Счётчик совпадает с длиной массива
+    expect(result).toContain(`(${failedSites.length})`);
+  });
+
+  it("B: empty input — возвращает пустую строку", () => {
+    const result = buildFailedSitesBlock([]);
+    expect(result).toBe("");
+  });
+
+  it("C: HTML escape — url и reason экранируются", () => {
+    const failedSites = [
+      {
+        url: "https://x.example/?a=1&b=2",
+        reason: "<script>alert(1)</script>",
+      },
+    ];
+    const result = buildFailedSitesBlock(failedSites);
+    // & в url должен быть экранирован
+    expect(result).toContain("&amp;");
+    expect(result).not.toContain("&b=2");
+    // <script> в reason должен быть экранирован
+    expect(result).toContain("&lt;script&gt;");
+    expect(result).not.toContain("<script>");
+  });
+
+  it("D: reason length cap — reason > 120 символов обрезается с суффиксом «…»", () => {
+    const longReason = "x".repeat(500);
+    const failedSites = [{ url: "https://y.example/", reason: longReason }];
+    const result = buildFailedSitesBlock(failedSites);
+    // Обрезанная причина должна заканчиваться на «…»
+    expect(result).toContain("…");
+    // Полный длинный reason НЕ должен присутствовать
+    expect(result).not.toContain(longReason);
+    // Проверяем что обрезано до 120 символов + «…»
+    const expectedTruncated = "x".repeat(120) + "…";
+    expect(result).toContain(expectedTruncated);
   });
 });
