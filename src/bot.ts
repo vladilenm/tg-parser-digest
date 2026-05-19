@@ -17,6 +17,7 @@ import {
 } from "./upload/storage.js";
 import { analyze } from "./upload/analyzer.js";
 import { renderMarkdown } from "./upload/renderer.js";
+import { buildLlmNarrative } from "./upload/llm.js";
 import path from "node:path";
 import type { ParsedRow, UploadType } from "./upload/types.js";
 
@@ -391,6 +392,84 @@ async function reparseFromDisk(
 }
 
 // =============================================================================
+// /summarize (quick-260519-lxu): LLM-narrative поверх битум-аплоадов текущей недели.
+// НЕ дублирует структурный отчёт handleDocument (его генерирует upload-pipeline
+// при ингесте) — даёт human-readable обзор от DeepSeek. Файлы НЕ пишет на диск.
+// =============================================================================
+
+/**
+ * Обработчик /summarize. Вынесен из handleCommand для тестируемости
+ * (mock OpenAI client инжектируется через env DEEPSEEK_API_KEY + патч OpenAI).
+ *
+ * Сценарии ответа:
+ *   1) В текущей недельной папке нет файлов → "За эту неделю файлов не загружено..."
+ *   2) Есть только один из пары prices/fca → "Нужны оба типа. Сейчас есть: <list>..."
+ *   3) Есть пара → analyze() → buildLlmNarrative() → sendMarkdown по частям
+ *   4) DeepSeek упал → "❌ Не удалось получить LLM-сводку: <reason>..."
+ *
+ * Не пишет на диск (никаких writeLastRun) — /summarize читает существующее состояние.
+ */
+export async function handleSummarizeCommand(
+  token: string,
+  msg: TgMessage
+): Promise<void> {
+  const chatId = msg.chat.id;
+  const week = currentMskWeek();
+  const status = listWeek(week);
+
+  // Сценарий 1: вообще ничего не загружено.
+  if (!status.hasPrices && !status.hasFca && !status.hasVolumes) {
+    await sendReply(
+      token,
+      chatId,
+      msg.message_id,
+      `❓ За эту неделю (${week}) файлов не загружено. Перешлите xlsx с биржей и FCA, потом повторите /summarize.`
+    );
+    return;
+  }
+
+  // Сценарий 2: только один из пары prices/fca.
+  if (!status.hasPrices || !status.hasFca) {
+    const present: string[] = [];
+    if (status.hasPrices) present.push("prices");
+    if (status.hasFca) present.push("fca");
+    if (status.hasVolumes) present.push("volumes");
+    const presentStr = present.length > 0 ? present.join(", ") : "—";
+    await sendReply(
+      token,
+      chatId,
+      msg.message_id,
+      `❓ Нужны оба типа (биржа + FCA). Сейчас в ${week} есть: ${presentStr}. Дозагрузите недостающие и повторите /summarize.`
+    );
+    return;
+  }
+
+  // Сценарий 3: пара собрана → analyze + LLM narrative.
+  try {
+    await sendPlain(token, chatId, "🤖 Готовлю LLM-сводку…");
+    const dict = loadRefineries();
+    const pricesRows = await reparseFromDisk(week, "birzha_prices", dict);
+    const fcaRows = await reparseFromDisk(week, "fca", dict);
+    const volumeRows = status.hasVolumes
+      ? await reparseFromDisk(week, "birzha_volumes", dict)
+      : [];
+    const result = analyze(pricesRows, fcaRows, volumeRows, dict);
+    const parts = await buildLlmNarrative(result);
+    for (const part of parts) {
+      await sendMarkdown(token, chatId, part);
+    }
+  } catch (err) {
+    const errMsg = (err as Error).message ?? String(err);
+    log.error(`[bot] /summarize error: ${errMsg}`);
+    await sendPlain(
+      token,
+      chatId,
+      `❌ Не удалось получить LLM-сводку: ${errMsg.slice(0, 300)}. Структурный отчёт доступен в предыдущих сообщениях после /upload.`
+    );
+  }
+}
+
+// =============================================================================
 // CRUD-обёртки (D-16): живут рядом с handler'ами, используют mutate() из Phase 1.
 // =============================================================================
 
@@ -552,6 +631,11 @@ export async function handleCommand(
       }`,
     ];
     await sendReply(token, msg.chat.id, msg.message_id, lines.join("\n"));
+    return;
+  }
+  if (cmd === "/summarize") {
+    // quick-260519-lxu: LLM-narrative от DeepSeek поверх битум-аплоадов недели.
+    await handleSummarizeCommand(token, msg);
     return;
   }
   // Прочие команды игнорируются молча.
