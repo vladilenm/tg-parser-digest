@@ -14,6 +14,7 @@ node_modules/
 # channels.json/websites.json в корне репо — seed-defaults, продолжают версионироваться.
 data/*
 !data/.gitkeep
+!data/refineries.json
 # Generated dashboard artifact (dev-tool, не версионируется).
 # Уже покрыто `data/*`, но прописано явно для grep-ability.
 /data/dashboard/
