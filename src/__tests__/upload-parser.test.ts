@@ -14,9 +14,17 @@ import {
 import type { RefineryEntry } from "../upload/types.js";
 
 const DICT: RefineryEntry[] = [
-  { canonical: "Газпромнефть-Омский НПЗ", aliases: ["Омский НПЗ"] },
-  { canonical: "Ангарская НХК", aliases: [] },
-  { canonical: "Волгограднефтепереработка", aliases: [] },
+  {
+    canonical: "Газпромнефть-Омский НПЗ",
+    company: "Газпромнефть",
+    aliases: ["Омский НПЗ"],
+  },
+  { canonical: "Ангарская НХК", company: "Роснефть", aliases: [] },
+  {
+    canonical: "Волгограднефтепереработка",
+    company: "ЛУКОЙЛ",
+    aliases: [],
+  },
 ];
 
 async function bufferOf(wb: ExcelJS.Workbook): Promise<Buffer> {

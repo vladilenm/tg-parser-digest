@@ -61,3 +61,22 @@ export function normalizeRefinery(
   }
   return raw.trim();
 }
+
+/**
+ * Возвращает company-холдинг для канонического имени НПЗ.
+ * Сравнение по точному совпадению canonical (case-insensitive).
+ * Если canonical не найден в словаре — возвращает "независимые" (безопасный fallback,
+ * чтобы analyzer.byCompany мог сгруппировать всё без NPE).
+ *
+ * Используется analyzer для byCompany и llm.ts для narrative.
+ */
+export function getCompany(
+  canonical: string,
+  dict: RefineryEntry[]
+): string {
+  const needle = canonical.trim().toLowerCase();
+  for (const e of dict) {
+    if (e.canonical.toLowerCase() === needle) return e.company;
+  }
+  return "независимые";
+}

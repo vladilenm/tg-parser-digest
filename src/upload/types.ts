@@ -7,9 +7,16 @@ export type UploadType = "birzha_prices" | "birzha_volumes" | "fca";
 /**
  * Canonical refinery + список алиасов из data/refineries.json.
  * Алиасы и canonical сравниваются case-insensitive trim — см. normalizeRefinery.
+ *
+ * company — холдинг-владелец НПЗ. Для российского битумного рынка используются 5 групп:
+ *   "Роснефть" | "Газпромнефть" | "ЛУКОЙЛ" | "Татнефть" | "независимые"
+ * (последняя — для всех мелких/средних производителей и независимых битумных терминалов).
+ * Поле обязательное (refineries.json v2+). Используется analyzer.byCompany +
+ * renderer + /summarize narrative.
  */
 export interface RefineryEntry {
   canonical: string;
+  company: string;
   aliases: string[];
 }
 
