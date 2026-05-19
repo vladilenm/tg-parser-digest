@@ -217,10 +217,55 @@ describe("fetchQuickChartPng", () => {
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
+      text: async () => '{"success":false,"message":"Invalid chart config: scales.y1 is malformed"}',
       arrayBuffer: async () => new ArrayBuffer(0),
     }) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
-    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP 500/);
+    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP 500.*Invalid chart config/);
+  });
+
+  it("truncates response body to 500 chars and appends ellipsis", async () => {
+    const longBody = "x".repeat(600);
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      text: async () => longBody,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }) as unknown as typeof fetch;
+    const cfg = buildChartConfig(makeResult());
+    try {
+      await fetchQuickChartPng(cfg, fetchImpl);
+      throw new Error("should have thrown");
+    } catch (err) {
+      const msg = (err as Error).message;
+      expect(msg).toMatch(/HTTP 400/);
+      expect(msg).toContain("…");
+      // body excerpt should be exactly 500 chars of x + ellipsis (not full 600).
+      expect(msg).toContain("x".repeat(500));
+      expect(msg).not.toContain("x".repeat(501)); // truncation actually happened
+    }
+  });
+
+  it("does NOT mask HTTP error when res.text() itself throws", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      text: async () => { throw new Error("body read failed"); },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }) as unknown as typeof fetch;
+    const cfg = buildChartConfig(makeResult());
+    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP 400/);
+    // The Error must be about HTTP status, NOT about body read.
+    try {
+      await fetchQuickChartPng(cfg, fetchImpl);
+    } catch (err) {
+      const msg = (err as Error).message;
+      expect(msg).toMatch(/HTTP 400/);
+      expect(msg).toContain("<body unavailable>");
+      expect(msg).not.toMatch(/body read failed/);
+    }
   });
 
   it("throws when response body is empty (zero bytes)", async () => {
