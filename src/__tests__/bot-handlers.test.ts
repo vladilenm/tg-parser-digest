@@ -25,6 +25,16 @@ vi.mock("../channels-store.js", () => ({
   saveChannels: vi.fn(),
 }));
 
+// Изолируем bot-handlers от реального data/uploads/ — иначе findLatestWeekWithUploads
+// найдёт настоящие dev-загрузки и /summarize пойдёт по happy-path вместо empty-week.
+vi.mock("../upload/storage.js", () => ({
+  findLatestWeekWithUploads: vi.fn(() => null),
+  listWeek: vi.fn(() => ({ hasPrices: false, hasFca: false, hasVolumes: false, lastRunAt: null })),
+  isoWeekFolder: vi.fn(() => "2026-W21"),
+  saveUpload: vi.fn(),
+  writeLastRun: vi.fn(),
+}));
+
 const mockedLoadChannels = vi.mocked(loadChannels);
 const mockedMutate = vi.mocked(mutate);
 
