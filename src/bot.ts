@@ -19,6 +19,7 @@ import {
 import { analyze } from "./upload/analyzer.js";
 import { renderMarkdown } from "./upload/renderer.js";
 import { buildLlmNarrative } from "./upload/llm.js";
+import { generateChartUrl } from "./upload/chart.js";
 import path from "node:path";
 import type { ParsedRow, UploadType } from "./upload/types.js";
 
@@ -250,6 +251,27 @@ async function sendMarkdown(
     disable_web_page_preview: true,
     // BOT-UI-01 / D-05: финальный markdown-отчёт upload-pipeline / LLM narrative
     // тоже несут клавиатуру.
+    reply_markup: MAIN_KEYBOARD,
+  });
+}
+
+/**
+ * Шлёт PNG-фото по URL (Bot API sendPhoto, photo=<URL>: TG скачает с публичной
+ * ссылки сам — для quickchart.io short URL это работает идеально).
+ * Используется в /summarize (quick-260519-ojk): combo bar+line chart top-10 НПЗ
+ * после LLM-narrative. На ошибку tgFetch — пробрасывается наверх (caller ловит).
+ */
+async function sendPhoto(
+  token: string,
+  chatId: number,
+  photoUrl: string,
+  caption: string
+): Promise<void> {
+  await tgFetch<{ ok: boolean }>(token, "sendPhoto", {
+    chat_id: chatId,
+    photo: photoUrl,
+    caption,
+    // BOT-UI-01 / D-05: фото после narrative тоже несёт клавиатуру.
     reply_markup: MAIN_KEYBOARD,
   });
 }
@@ -496,6 +518,28 @@ export async function handleSummarizeCommand(
     const parts = await buildLlmNarrative(result);
     for (const part of parts) {
       await sendMarkdown(token, chatId, part);
+    }
+
+    // quick-260519-ojk: визуальный чарт top-10 НПЗ (Δ цены + объёмы) поверх
+    // narrative. Изолированный try/catch — chart failure НЕ должен валить
+    // handler: narrative уже доставлен, чарт — bonus. generateChartUrl сам
+    // возвращает null при <3 НПЗ и при ошибках quickchart, но дополнительно
+    // защищаемся try/catch на случай неожиданного throw'а (e.g. sendPhoto
+    // вернул 400 если quickchart недоступен из инфраструктуры TG).
+    try {
+      const chartUrl = await generateChartUrl(result);
+      if (chartUrl) {
+        await sendPhoto(
+          token,
+          chatId,
+          chartUrl,
+          "Δ цены и объёмы по НПЗ (top-10)"
+        );
+      }
+    } catch (chartErr) {
+      log.warn(
+        `[bot] /summarize chart failed (narrative was delivered): ${(chartErr as Error).message}`
+      );
     }
   } catch (err) {
     const errMsg = (err as Error).message ?? String(err);
