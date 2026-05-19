@@ -18,6 +18,7 @@ import {
   listWeek,
   writeLastRun,
   weekDir,
+  findLatestWeekWithUploads,
 } from "../upload/storage.js";
 
 describe("isoWeekFolder", () => {
@@ -110,5 +111,79 @@ describe("saveUpload + listWeek + writeLastRun (round-trip in temp dir)", () => 
     writeFileSync(path.join(wd, ".last-run.json"), "not-json");
     const status = listWeek(week);
     expect(status.lastRunAt).toBe(null);
+  });
+});
+
+describe("findLatestWeekWithUploads", () => {
+  let prevDataDir: string | undefined;
+  let tmp: string;
+
+  beforeEach(() => {
+    prevDataDir = process.env.DATA_DIR;
+    tmp = mkdtempSync(path.join(tmpdir(), "find-latest-week-test-"));
+    process.env.DATA_DIR = tmp;
+  });
+
+  afterEach(() => {
+    if (prevDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = prevDataDir;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns null when uploads/ does not exist", () => {
+    expect(findLatestWeekWithUploads()).toBe(null);
+  });
+
+  it("returns null when uploads/ exists but is empty", () => {
+    mkdirSync(path.join(tmp, "uploads"), { recursive: true });
+    expect(findLatestWeekWithUploads()).toBe(null);
+  });
+
+  it("returns null when a week folder has only .last-run.json (no xlsx)", () => {
+    const wd = path.join(tmp, "uploads", "2026-W19");
+    mkdirSync(wd, { recursive: true });
+    writeFileSync(path.join(wd, ".last-run.json"), "{}");
+    expect(findLatestWeekWithUploads()).toBe(null);
+  });
+
+  it("returns the only week when it contains xlsx", async () => {
+    await saveUpload(Buffer.from("p"), "birzha_prices", "2026-W19");
+    expect(findLatestWeekWithUploads()).toBe("2026-W19");
+  });
+
+  it("returns lex-max week when multiple weeks contain xlsx", async () => {
+    await saveUpload(Buffer.from("p"), "birzha_prices", "2026-W18");
+    await saveUpload(Buffer.from("p"), "birzha_prices", "2026-W19");
+    await saveUpload(Buffer.from("f"), "fca", "2026-W19");
+    await saveUpload(Buffer.from("p"), "birzha_prices", "2025-W52");
+    expect(findLatestWeekWithUploads()).toBe("2026-W19");
+  });
+
+  it("ignores folders with invalid names (tmp, 2026-W, foo)", async () => {
+    await saveUpload(Buffer.from("p"), "birzha_prices", "2026-W18");
+    // Add a few garbage entries that must be ignored.
+    mkdirSync(path.join(tmp, "uploads", "tmp"), { recursive: true });
+    writeFileSync(path.join(tmp, "uploads", "tmp", "foo.xlsx"), "x");
+    mkdirSync(path.join(tmp, "uploads", "2026-W"), { recursive: true });
+    writeFileSync(path.join(tmp, "uploads", "2026-W", "bar.xlsx"), "x");
+    mkdirSync(path.join(tmp, "uploads", "foo"), { recursive: true });
+    writeFileSync(path.join(tmp, "uploads", "foo", "baz.xlsx"), "x");
+    expect(findLatestWeekWithUploads()).toBe("2026-W18");
+  });
+
+  it("ignores .DS_Store and other non-xlsx files when deciding xlsx presence", () => {
+    const wd = path.join(tmp, "uploads", "2026-W19");
+    mkdirSync(wd, { recursive: true });
+    writeFileSync(path.join(wd, ".DS_Store"), "");
+    writeFileSync(path.join(wd, ".last-run.json"), "{}");
+    writeFileSync(path.join(wd, "notes.txt"), "hello");
+    // No xlsx → must skip the folder.
+    expect(findLatestWeekWithUploads()).toBe(null);
+  });
+
+  it("works across ISO-year boundary (2025-W52 vs 2026-W01 lex-sort)", async () => {
+    await saveUpload(Buffer.from("p"), "birzha_prices", "2025-W52");
+    await saveUpload(Buffer.from("p"), "birzha_prices", "2026-W01");
+    expect(findLatestWeekWithUploads()).toBe("2026-W01");
   });
 });

@@ -8,10 +8,14 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
 } from "node:fs";
 import path from "node:path";
 import { paths } from "../paths.js";
 import type { UploadType } from "./types.js";
+
+/** Regex для матчинга ISO-week-папки формата YYYY-Www (padded). */
+const ISO_WEEK_FOLDER_RE = /^\d{4}-W\d{2}$/;
 
 /**
  * ISO 8601 week (Thursday-rule), формат "YYYY-Www".
@@ -93,6 +97,50 @@ export function listWeek(week: string): WeekStatus {
     }
   }
   return status;
+}
+
+/**
+ * Сканирует `${DATA_DIR}/uploads/` и возвращает имя последней (lex-max) папки
+ * формата `YYYY-Www`, в которой лежит хотя бы один `.xlsx` файл.
+ *
+ * Используется `/summarize` и `/upload_status` для разрешения «недели данных»:
+ * `handleDocument` сохраняет в неделю latest-даты файла (например, 2026-W19), а
+ * MSK-неделя «сейчас» может быть уже другой (2026-W21). Чтобы read-путь нашёл
+ * данные, ищем самую свежую неделю на диске и возвращаем её. Fallback на
+ * `currentMskWeek()` остаётся на стороне вызова при `null`.
+ *
+ * Правила фильтрации:
+ * - имя папки строго `YYYY-Www` (e.g. "2026-W19"), padded — для lex-сортировки;
+ * - содержимое: ≥1 `.xlsx` файл; `.last-run.json` / `.DS_Store` / прочее не
+ *   считаются данными;
+ * - если `uploads/` отсутствует / пустая / нет ни одной валидной недели → `null`.
+ */
+export function findLatestWeekWithUploads(): string | null {
+  const uploadsRoot = path.join(paths.dataDir, "uploads");
+  if (!existsSync(uploadsRoot)) return null;
+  let entries: string[];
+  try {
+    entries = readdirSync(uploadsRoot);
+  } catch {
+    return null;
+  }
+  const candidates: string[] = [];
+  for (const name of entries) {
+    if (!ISO_WEEK_FOLDER_RE.test(name)) continue;
+    const dir = path.join(uploadsRoot, name);
+    let files: string[];
+    try {
+      files = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    const hasXlsx = files.some((f) => f.endsWith(".xlsx"));
+    if (hasXlsx) candidates.push(name);
+  }
+  if (candidates.length === 0) return null;
+  // Lex-max работает корректно: формат `YYYY-Www` padded двузначной неделей.
+  candidates.sort();
+  return candidates[candidates.length - 1];
 }
 
 /**
