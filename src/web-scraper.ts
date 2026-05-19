@@ -317,25 +317,21 @@ function buildWebHeader(succeeded: number, total: number): string {
 }
 
 // =============================================================================
-// buildFailedSitesBlock — quick-260519-k6c.
+// buildFailedSitesBlock — quick-260519-k6c + quick-260519-tmc.
 // Возвращает HTML-блок «⚠️ Не удалось распарсить (N)» для аппенда в конец дайджеста.
 // На вход — failedSites из runWebPipeline (только rejected, НЕ fulfilled-empty).
 // На пустой массив → "" (caller конкатенирует, ничего не появится).
 //
+// quick-260519-tmc: reason больше не рендерится в блоке — остаётся только в типе
+// для совместимости с caller (runWebPipeline всё ещё передаёт reason для логов).
+//
 // EXPORTED — чтобы юнит-тесты зафиксировали контракт (формат блока, escape, empty case).
 // =============================================================================
-const REASON_MAX_CHARS = 120;
 export function buildFailedSitesBlock(
   failedSites: Array<{ url: string; reason: string }>
 ): string {
   if (failedSites.length === 0) return "";
-  const lines = failedSites.map((f) => {
-    const reason =
-      f.reason.length > REASON_MAX_CHARS
-        ? f.reason.slice(0, REASON_MAX_CHARS) + "…"
-        : f.reason;
-    return `• <code>${escapeHtml(f.url)}</code> — ${escapeHtml(reason)}`;
-  });
+  const lines = failedSites.map((f) => `• <code>${escapeHtml(f.url)}</code>`);
   return `\n\n<b>⚠️ Не удалось распарсить (${failedSites.length})</b>\n` + lines.join("\n");
 }
 

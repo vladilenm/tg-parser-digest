@@ -287,11 +287,12 @@ describe("composeWebDigest (D-12 — contract anchor)", () => {
 });
 
 // =============================================================================
-// buildFailedSitesBlock — quick-260519-k6c: блок «⚠️ Не удалось распарсить (N)»
-// Контракт: non-empty → блок, empty → "", HTML escape применяется к url и reason.
+// buildFailedSitesBlock — quick-260519-k6c + quick-260519-tmc: блок «⚠️ Не удалось распарсить (N)»
+// Контракт: non-empty → блок только с URL (без reason), empty → "", HTML escape для URL.
+// quick-260519-tmc: reason больше не рендерится — остаётся только в типе для совместимости.
 // =============================================================================
 describe("buildFailedSitesBlock (quick-260519-k6c)", () => {
-  it("A: non-empty — возвращает блок с заголовком и bullets", () => {
+  it("A: non-empty — возвращает блок с заголовком и URL-only bullets", () => {
     const failedSites = [
       { url: "https://a.example/", reason: "HTTP 500" },
       {
@@ -304,12 +305,15 @@ describe("buildFailedSitesBlock (quick-260519-k6c)", () => {
     expect(result.startsWith("\n\n")).toBe(true);
     // Заголовок с правильным счётчиком
     expect(result).toContain("<b>⚠️ Не удалось распарсить (2)</b>");
-    // Первый bullet
-    expect(result).toContain("• <code>https://a.example/</code> — HTTP 500");
-    // Второй bullet
-    expect(result).toContain("• <code>https://b.example/news</code> — fetch failed");
+    // Первый bullet — только URL, без reason
+    expect(result).toContain("• <code>https://a.example/</code>");
+    // Второй bullet — только URL, без reason
+    expect(result).toContain("• <code>https://b.example/news</code>");
     // Счётчик совпадает с длиной массива
     expect(result).toContain(`(${failedSites.length})`);
+    // quick-260519-tmc: reason нигде не должен утечь в вывод
+    expect(result).not.toContain("— HTTP 500");
+    expect(result).not.toContain("— fetch failed");
   });
 
   it("B: empty input — возвращает пустую строку", () => {
@@ -317,7 +321,7 @@ describe("buildFailedSitesBlock (quick-260519-k6c)", () => {
     expect(result).toBe("");
   });
 
-  it("C: HTML escape — url и reason экранируются", () => {
+  it("C: HTML escape — url экранируется, reason не рендерится", () => {
     const failedSites = [
       {
         url: "https://x.example/?a=1&b=2",
@@ -328,21 +332,8 @@ describe("buildFailedSitesBlock (quick-260519-k6c)", () => {
     // & в url должен быть экранирован
     expect(result).toContain("&amp;");
     expect(result).not.toContain("&b=2");
-    // <script> в reason должен быть экранирован
-    expect(result).toContain("&lt;script&gt;");
+    // quick-260519-tmc: reason не рендерится — ни сырым, ни escaped
     expect(result).not.toContain("<script>");
-  });
-
-  it("D: reason length cap — reason > 120 символов обрезается с суффиксом «…»", () => {
-    const longReason = "x".repeat(500);
-    const failedSites = [{ url: "https://y.example/", reason: longReason }];
-    const result = buildFailedSitesBlock(failedSites);
-    // Обрезанная причина должна заканчиваться на «…»
-    expect(result).toContain("…");
-    // Полный длинный reason НЕ должен присутствовать
-    expect(result).not.toContain(longReason);
-    // Проверяем что обрезано до 120 символов + «…»
-    const expectedTruncated = "x".repeat(120) + "…";
-    expect(result).toContain(expectedTruncated);
+    expect(result).not.toContain("&lt;script&gt;");
   });
 });
