@@ -185,6 +185,24 @@ export function buildChartConfig(result: AnalysisResult): Record<string, unknown
 }
 
 // =============================================================================
+// PNG magic detection (quick-260519-pwy).
+// =============================================================================
+
+// quick-260519-pwy: PNG magic — первые 8 байт PNG-файла.
+// quickchart.io на 400/500 может вернуть error-PNG (картинку с красным текстом
+// ошибки) вместо JSON — мы детектим это по magic и возвращаем bytes как обычно,
+// чтобы handleSummarizeCommand доставил картинку в TG (sendPhotoMultipart).
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+
+function hasPngMagic(bytes: Uint8Array): boolean {
+  if (bytes.length < PNG_MAGIC.length) return false;
+  for (let i = 0; i < PNG_MAGIC.length; i++) {
+    if (bytes[i] !== PNG_MAGIC[i]) return false;
+  }
+  return true;
+}
+
+// =============================================================================
 // quickchart.io client.
 // =============================================================================
 
@@ -222,19 +240,31 @@ export async function fetchQuickChartPng(
       }),
       signal: controller.signal,
     });
-    // quick-260519-pl2: quickchart возвращает JSON {"success":false,"message":"<причина>"}
-    // на 400-ошибках — раньше мы выбрасывали только HTTP статус и теряли реальную причину.
-    // Теперь читаем body (первые 500 символов) и включаем в Error message, чтобы /summarize
-    // логи сразу показывали что именно не так с Chart.js конфигом.
+    // quick-260519-pwy: quickchart на HTTP !ok может вернуть error-PNG (картинка
+    // с текстом ошибки) вместо JSON/HTML. Читаем body ОДИН раз через arrayBuffer,
+    // проверяем PNG magic. Если PNG — возвращаем bytes (caller отправит как обычно
+    // через sendPhotoMultipart, пользователь увидит причину 400 прямо на картинке).
+    // Если не PNG — throw как и раньше (quick-260519-pl2), decode'я bytes через
+    // TextDecoder (НЕ res.text() — стрим уже прочитан arrayBuffer'ом).
     if (!res.ok) {
-      let bodyExcerpt = "<body unavailable>";
+      let bytes: Uint8Array;
       try {
-        const body = await res.text();
-        bodyExcerpt = body.length > 500 ? body.slice(0, 500) + "…" : body;
+        const buf = await res.arrayBuffer();
+        bytes = new Uint8Array(buf);
       } catch {
-        // res.text() может упасть (тело уже прочитано, сеть оборвалась во время чтения).
-        // Не маскируем оригинальную HTTP-ошибку — оставляем плейсхолдер.
+        // arrayBuffer() сам упал — не маскируем оригинальный HTTP-статус.
+        throw new Error(`[chart] HTTP ${res.status} ${res.statusText} body=<body unavailable>`);
       }
+      if (hasPngMagic(bytes)) {
+        log.warn(`[chart] HTTP ${res.status} ${res.statusText} but body is PNG (quickchart error-image), returning bytes=${bytes.length}`);
+        return bytes;
+      }
+      // Non-PNG body: decode как UTF-8 (lossy, не throw'ает на невалидных байтах),
+      // truncate 500ch + '…' (как было после quick-260519-pl2).
+      const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      const bodyExcerpt = text.length > 500
+        ? text.slice(0, 500) + "…"
+        : (text.length === 0 ? "<body unavailable>" : text);
       throw new Error(`[chart] HTTP ${res.status} ${res.statusText} body=${bodyExcerpt}`);
     }
     const buf = await res.arrayBuffer();

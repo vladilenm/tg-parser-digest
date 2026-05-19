@@ -217,21 +217,18 @@ describe("fetchQuickChartPng", () => {
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
-      text: async () => '{"success":false,"message":"Invalid chart config: scales.y1 is malformed"}',
-      arrayBuffer: async () => new ArrayBuffer(0),
+      arrayBuffer: async () => new TextEncoder().encode('{"success":false,"message":"Invalid chart config: scales.y1 is malformed"}').buffer,
     }) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
     await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP 500.*Invalid chart config/);
   });
 
   it("truncates response body to 500 chars and appends ellipsis", async () => {
-    const longBody = "x".repeat(600);
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: false,
       status: 400,
       statusText: "Bad Request",
-      text: async () => longBody,
-      arrayBuffer: async () => new ArrayBuffer(0),
+      arrayBuffer: async () => new TextEncoder().encode("x".repeat(600)).buffer,
     }) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
     try {
@@ -247,13 +244,12 @@ describe("fetchQuickChartPng", () => {
     }
   });
 
-  it("does NOT mask HTTP error when res.text() itself throws", async () => {
+  it("does NOT mask HTTP error when arrayBuffer() itself throws", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: false,
       status: 400,
       statusText: "Bad Request",
-      text: async () => { throw new Error("body read failed"); },
-      arrayBuffer: async () => new ArrayBuffer(0),
+      arrayBuffer: async () => { throw new Error("body read failed"); },
     }) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
     await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP 400/);
@@ -283,6 +279,59 @@ describe("fetchQuickChartPng", () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("ECONNRESET")) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
     await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/ECONNRESET/);
+  });
+
+  it("returns bytes when HTTP !ok body is valid PNG (quickchart error-image)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      arrayBuffer: async () => PNG_BYTES.buffer.slice(
+        PNG_BYTES.byteOffset,
+        PNG_BYTES.byteOffset + PNG_BYTES.byteLength
+      ),
+    }) as unknown as typeof fetch;
+    const cfg = buildChartConfig(makeResult());
+    const bytes = await fetchQuickChartPng(cfg, fetchImpl);
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes.length).toBeGreaterThan(0);
+    // First 8 bytes must match PNG magic.
+    expect(bytes[0]).toBe(0x89);
+    expect(bytes[1]).toBe(0x50);
+    expect(bytes[2]).toBe(0x4e);
+    expect(bytes[3]).toBe(0x47);
+    expect(bytes[4]).toBe(0x0d);
+    expect(bytes[5]).toBe(0x0a);
+    expect(bytes[6]).toBe(0x1a);
+    expect(bytes[7]).toBe(0x0a);
+  });
+
+  it("throws when HTTP !ok body is non-PNG (HTML)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      arrayBuffer: async () => new TextEncoder().encode("<html><body>500 Internal Server Error</body></html>").buffer,
+    }) as unknown as typeof fetch;
+    const cfg = buildChartConfig(makeResult());
+    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP 500/);
+    try {
+      await fetchQuickChartPng(cfg, fetchImpl);
+    } catch (err) {
+      const msg = (err as Error).message;
+      expect(msg).toContain("<html>");
+    }
+  });
+
+  it("throws when HTTP !ok body is shorter than 8 bytes (treated as non-PNG)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      arrayBuffer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer,
+    }) as unknown as typeof fetch;
+    const cfg = buildChartConfig(makeResult());
+    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP/);
   });
 });
 
