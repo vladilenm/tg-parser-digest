@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-19 - Completed quick task 260519-pl2: /summarize chart — log quickchart response body on HTTP !ok (диагностика 400)
+Last activity: 2026-05-19 - Completed quick task 260519-pwy: chart.ts — на HTTP !ok возвращать error-PNG bytes (quickchart рисует ошибку на картинке, шлём в TG)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -97,6 +97,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260519-ojk | Charts в /summarize — combo bar+line чарт (Δ биржа + Δ FCA + объёмы) через quickchart.io POST /chart/create → sendPhoto в DM после narrative chunks | 2026-05-19 | 279b574 | [260519-ojk-charts-in-summarize-combo-bar-line-chart](./quick/260519-ojk-charts-in-summarize-combo-bar-line-chart/) |
 | 260519-p3g | Fix chart delivery — quickchart POST /chart → PNG bytes → Telegram sendPhoto через FormData/Blob multipart (вместо sendPhoto by URL который TG отказывался скачивать с 400 'failed to get HTTP URL content') | 2026-05-19 | e6f3443 | [260519-p3g-fix-sendphoto-chart-via-multipart-upload](./quick/260519-p3g-fix-sendphoto-chart-via-multipart-upload/) |
 | 260519-pl2 | /summarize chart — read quickchart response body on HTTP !ok (truncated 500ch with `…`) + include в Error message; defensive try/catch вокруг res.text() с `<body unavailable>` fallback. Диагностика 400 теперь видна в логах. | 2026-05-19 | e376510 | [260519-pl2-summarize-chart-log-quickchart-response-](./quick/260519-pl2-summarize-chart-log-quickchart-response-/) |
+| 260519-pwy | chart.ts: при HTTP !ok если body начинается с PNG magic — возвращать bytes вместо throw. Quickchart на невалидный config рисует ошибку текстом на картинке — теперь она едет в TG как обычное фото, причина 400 видна прямо в чате. PNG_MAGIC + hasPngMagic helper, single arrayBuffer read, TextDecoder lossy decode для non-PNG. | 2026-05-19 | 09704e0 | [260519-pwy-chart-ts-http-ok-error-png-bytes-magic-q](./quick/260519-pwy-chart-ts-http-ok-error-png-bytes-magic-q/) |
 
 ## Session Continuity
 
