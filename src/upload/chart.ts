@@ -222,8 +222,20 @@ export async function fetchQuickChartPng(
       }),
       signal: controller.signal,
     });
+    // quick-260519-pl2: quickchart возвращает JSON {"success":false,"message":"<причина>"}
+    // на 400-ошибках — раньше мы выбрасывали только HTTP статус и теряли реальную причину.
+    // Теперь читаем body (первые 500 символов) и включаем в Error message, чтобы /summarize
+    // логи сразу показывали что именно не так с Chart.js конфигом.
     if (!res.ok) {
-      throw new Error(`[chart] HTTP ${res.status} ${res.statusText}`);
+      let bodyExcerpt = "<body unavailable>";
+      try {
+        const body = await res.text();
+        bodyExcerpt = body.length > 500 ? body.slice(0, 500) + "…" : body;
+      } catch {
+        // res.text() может упасть (тело уже прочитано, сеть оборвалась во время чтения).
+        // Не маскируем оригинальную HTTP-ошибку — оставляем плейсхолдер.
+      }
+      throw new Error(`[chart] HTTP ${res.status} ${res.statusText} body=${bodyExcerpt}`);
     }
     const buf = await res.arrayBuffer();
     const bytes = new Uint8Array(buf);
