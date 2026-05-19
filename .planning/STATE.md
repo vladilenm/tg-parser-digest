@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-19 - Completed quick task 260519-nxc: Fix week resolution — /summarize и /upload_status теперь смотрят в latest non-empty неделю
+Last activity: 2026-05-19 - Completed quick task 260519-ojk: Charts в /summarize — combo bar+line чарт через quickchart.io, sendPhoto после narrative
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -94,6 +94,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260519-lxu | /summarize command — DeepSeek narrative over bitumen uploads (биржа + FCA) с группировкой по компаниям (Роснефть/Газпромнефть/ЛУКОЙЛ/Татнефть/независимые) | 2026-05-19 | d86e295 | [260519-lxu-bot-llm-deepseek-narrative-analysisresul](./quick/260519-lxu-bot-llm-deepseek-narrative-analysisresul/) |
 | 260519-na3 | Bot UI — ReplyKeyboard 2×2 (📊 Статус / 🧠 Сводка / 📋 Каналы / ❓ Помощь) + setMyCommands (7 команд) + /start + /help handlers | 2026-05-19 | 19dcb57 | [260519-na3-bot-ui-replykeyboard-2x2-setmycommands-s](./quick/260519-na3-bot-ui-replykeyboard-2x2-setmycommands-s/) |
 | 260519-nxc | Fix week resolution — findLatestWeekWithUploads() в storage.ts; /summarize и /upload_status теперь смотрят в самую свежую непустую неделю в data/uploads/, а не currentMskWeek() | 2026-05-19 | abb9dc2 | [260519-nxc-fix-week-resolution-summarize-upload-sta](./quick/260519-nxc-fix-week-resolution-summarize-upload-sta/) |
+| 260519-ojk | Charts в /summarize — combo bar+line чарт (Δ биржа + Δ FCA + объёмы) через quickchart.io POST /chart/create → sendPhoto в DM после narrative chunks | 2026-05-19 | 279b574 | [260519-ojk-charts-in-summarize-combo-bar-line-chart](./quick/260519-ojk-charts-in-summarize-combo-bar-line-chart/) |
 
 ## Session Continuity
 
