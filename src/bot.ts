@@ -1,8 +1,24 @@
 // src/bot.ts — Telegram bot polling + commands handler.
 // Использует тот же TG_BOT_TOKEN, что и delivery (D-01). CRUD-обёртки рядом с handler'ами (D-16).
 
+import { readFileSync } from "node:fs";
+import ExcelJS from "exceljs";
 import { mutate, loadChannels, type ChannelEntry } from "./channels-store.js";
 import { log } from "./logger.js";
+import { detectUploadType } from "./upload/detect.js";
+import { parseWorkbook } from "./upload/parser.js";
+import { loadRefineries } from "./upload/refineries.js";
+import {
+  isoWeekFolder,
+  listWeek,
+  saveUpload,
+  weekDir,
+  writeLastRun,
+} from "./upload/storage.js";
+import { analyze } from "./upload/analyzer.js";
+import { renderMarkdown } from "./upload/renderer.js";
+import path from "node:path";
+import type { ParsedRow, UploadType } from "./upload/types.js";
 
 // =============================================================================
 // Telegram API минимальные типы — чтобы избежать `any` в polling/handlers.
@@ -14,11 +30,24 @@ interface TgUser {
 interface TgChat {
   id: number;
 }
+interface TgDocument {
+  file_id: string;
+  file_unique_id?: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+}
 interface TgMessage {
   message_id: number;
   from?: TgUser;
   chat: TgChat;
   text?: string;
+  document?: TgDocument;
+}
+interface TgFile {
+  file_id: string;
+  file_path?: string;
+  file_size?: number;
 }
 interface TgCallbackQuery {
   id: string;
@@ -154,6 +183,211 @@ async function sendReplyWithKeyboard(
     disable_web_page_preview: true,
     reply_markup: { inline_keyboard: keyboard },
   });
+}
+
+/**
+ * Шлёт plain-text сообщение в чат БЕЗ reply_to (для прогресс-индикаторов и финального
+ * отчёта в DM, где «свежий» thread читабельнее, чем replies-кружочки).
+ */
+async function sendPlain(
+  token: string,
+  chatId: number,
+  text: string
+): Promise<void> {
+  await tgFetch<{ ok: boolean }>(token, "sendMessage", {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true,
+  });
+}
+
+/**
+ * Шлёт Markdown-сообщение (parse_mode: "Markdown") — используется для финального
+ * отчёта upload-pipeline. Markdown V1 (не V2) — меньше escape-боли.
+ */
+async function sendMarkdown(
+  token: string,
+  chatId: number,
+  text: string
+): Promise<void> {
+  await tgFetch<{ ok: boolean }>(token, "sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "Markdown",
+    disable_web_page_preview: true,
+  });
+}
+
+// =============================================================================
+// Upload pipeline helpers (Plan quick-260519-l11).
+// =============================================================================
+
+/**
+ * Текущая неделя в часовом поясе MSK (UTC+3).
+ * Используется только для команды /upload_status — для save-операций мы берём
+ * неделю из latest-date файла, а не из «сейчас».
+ */
+function currentMskWeek(): string {
+  const nowUtc = Date.now();
+  const mskDate = new Date(nowUtc + 3 * 3600 * 1000);
+  return isoWeekFolder(mskDate);
+}
+
+/**
+ * Скачивает файл по file_id через Bot API: getFile → file_path → fetch.
+ * Возвращает Buffer + предложенное имя (из document.file_name или file_path basename).
+ */
+async function downloadTgFile(
+  token: string,
+  fileId: string,
+  fallbackName: string
+): Promise<{ buffer: Buffer; fileName: string }> {
+  const meta = await tgFetch<{ ok: boolean; result: TgFile }>(
+    token,
+    "getFile",
+    { file_id: fileId }
+  );
+  const filePath = meta.result.file_path;
+  if (!filePath) {
+    throw new Error("[bot] getFile: no file_path in response");
+  }
+  const url = `${TG_API}/file/bot${token}/${filePath}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(
+      `[bot] download failed: HTTP ${res.status} ${res.statusText}`
+    );
+  }
+  const arr = await res.arrayBuffer();
+  return {
+    buffer: Buffer.from(arr),
+    fileName: fallbackName || path.basename(filePath),
+  };
+}
+
+/**
+ * Обрабатывает document-сообщение от allowlist-юзера: detect → save →
+ * (если пара prices+fca собрана) → analyze → send Markdown.
+ *
+ * Не-allowlist → silent ignore (как handleCommand).
+ * Любые throw из pipeline ловятся локальным try/catch и репортятся юзеру коротким текстом.
+ */
+export async function handleDocument(
+  token: string,
+  msg: TgMessage,
+  allowlist: Set<number>
+): Promise<void> {
+  const userId = msg.from?.id;
+  const doc = msg.document;
+  if (!userId || !doc) return;
+
+  if (!allowlist.has(userId)) {
+    log.info(`[bot] denied: from=${userId} cmd=document`);
+    return;
+  }
+
+  const chatId = msg.chat.id;
+  try {
+    await sendPlain(token, chatId, "⏳ Сохраняю файл…");
+
+    // 1) Download
+    const { buffer, fileName } = await downloadTgFile(
+      token,
+      doc.file_id,
+      doc.file_name ?? "upload.xlsx"
+    );
+    log.info(
+      `[bot] document received: from=${userId} name=${fileName} size=${buffer.length}`
+    );
+
+    // 2) Detect by A1 marker
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as unknown as ArrayBuffer);
+    const type = detectUploadType(wb);
+    if (!type) {
+      await sendPlain(
+        token,
+        chatId,
+        `❓ Не удалось определить тип файла по A1.\nОжидаемые маркеры:\n- "Цена битум на бирже"\n- "Объем битум на бирже"\n- "Битум цены продавцов FCA"`
+      );
+      return;
+    }
+
+    // 3) Parse THIS upload (to know latest date → which week folder)
+    const dict = loadRefineries();
+    const rows = await parseWorkbook(buffer, type, dict);
+    if (rows.length === 0) {
+      await sendPlain(
+        token,
+        chatId,
+        `⚠️ Файл распознан как ${type}, но строки с данными не найдены.`
+      );
+      return;
+    }
+    let latest = rows[0].date;
+    for (const r of rows) {
+      if (r.date.getTime() > latest.getTime()) latest = r.date;
+    }
+    const week = isoWeekFolder(latest);
+
+    // 4) Save
+    await saveUpload(buffer, type, week);
+    await sendPlain(
+      token,
+      chatId,
+      `✅ Сохранён ${type}.xlsx в data/uploads/${week}/`
+    );
+
+    // 5) If prices + fca both present → re-parse from disk and analyze
+    const status = listWeek(week);
+    if (status.hasPrices && status.hasFca) {
+      await sendPlain(token, chatId, "🔍 Считаю Δ цен…");
+      const pricesRows = await reparseFromDisk(week, "birzha_prices", dict);
+      const fcaRows = await reparseFromDisk(week, "fca", dict);
+      const volumeRows = status.hasVolumes
+        ? await reparseFromDisk(week, "birzha_volumes", dict)
+        : [];
+      await sendPlain(token, chatId, "📊 Готовлю сводку…");
+      const result = analyze(pricesRows, fcaRows, volumeRows);
+      const parts = renderMarkdown(result);
+      for (const part of parts) {
+        await sendMarkdown(token, chatId, part);
+      }
+      writeLastRun(week, new Date());
+    } else {
+      await sendPlain(
+        token,
+        chatId,
+        `📦 Жду пару (нужны prices + fca). Сейчас в ${week}: prices=${status.hasPrices ? "✅" : "❌"}, fca=${status.hasFca ? "✅" : "❌"}, volumes=${status.hasVolumes ? "✅" : "❌"}.`
+      );
+    }
+  } catch (err) {
+    const msgText = (err as Error).message ?? String(err);
+    log.error(`[bot] handleDocument error: ${msgText}`);
+    try {
+      await sendPlain(
+        token,
+        chatId,
+        `⚠️ Ошибка: ${msgText.slice(0, 300)}`
+      );
+    } catch {
+      // Если даже плейн сообщение не уходит — pollOnce поймает в outer try/catch.
+    }
+  }
+}
+
+/**
+ * Перечитать xlsx с диска (для weekly state). Используется при сборе пары
+ * prices+fca, чтобы не зависеть от того, что в данный момент прислал юзер.
+ */
+async function reparseFromDisk(
+  week: string,
+  type: UploadType,
+  dict: ReturnType<typeof loadRefineries>
+): Promise<ParsedRow[]> {
+  const filePath = path.join(weekDir(week), `${type}.xlsx`);
+  const buf = readFileSync(filePath);
+  return parseWorkbook(buf, type, dict);
 }
 
 // =============================================================================
@@ -305,6 +539,21 @@ export async function handleCommand(
     );
     return;
   }
+  if (cmd === "/upload_status") {
+    const week = currentMskWeek();
+    const status = listWeek(week);
+    const lines = [
+      `Папка ${week}:`,
+      `- prices: ${status.hasPrices ? "✅" : "❌"}`,
+      `- fca: ${status.hasFca ? "✅" : "❌"}`,
+      `- volumes: ${status.hasVolumes ? "✅" : "❌"}`,
+      `Последний прогон: ${
+        status.lastRunAt ? status.lastRunAt.toISOString() : "—"
+      }`,
+    ];
+    await sendReply(token, msg.chat.id, msg.message_id, lines.join("\n"));
+    return;
+  }
   // Прочие команды игнорируются молча.
 }
 
@@ -449,7 +698,11 @@ async function pollOnce(
     lastOffset = Math.max(lastOffset, upd.update_id + 1);
     try {
       if (upd.message) {
-        await handleCommand(token, upd.message, allowlist);
+        if (upd.message.document) {
+          await handleDocument(token, upd.message, allowlist);
+        } else if (upd.message.text) {
+          await handleCommand(token, upd.message, allowlist);
+        }
       } else if (upd.callback_query) {
         await handleCallbackQuery(token, upd.callback_query, allowlist);
       }
