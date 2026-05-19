@@ -410,13 +410,10 @@ describe("/summarize — chart (quick-260519-p3g multipart)", () => {
     ).toBe(false);
   });
 
-  it("does NOT crash handler when multipart sendPhoto returns 400", async () => {
-    // Симулируем сценарий: PNG bytes получены, но TG вернул 400 на multipart
-    // (теоретический edge — например, PNG corrupt). Handler не падает,
-    // narrative доставлен, sendPhoto одна попытка — потом catch + warn.
+  // quick-260519-s1z: переименован — теперь assert'ит sendDocument fallback.
+  it("falls back to sendDocument when sendPhoto returns PHOTO_INVALID_DIMENSIONS (quick-260519-s1z)", async () => {
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     mockedGenerateChartPng.mockResolvedValueOnce(pngBytes);
-    // Перехватываем fetch: для sendPhoto возвращаем 400.
     const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock.mockImplementation(async (url: string | URL | Request) => {
       const u = typeof url === "string" ? url : url.toString();
@@ -426,7 +423,15 @@ describe("/summarize — chart (quick-260519-p3g multipart)", () => {
           status: 400,
           statusText: "Bad Request",
           json: async () => ({}),
-          text: async () => "PHOTO_INVALID_DIMENSIONS",
+          text: async () =>
+            '{"ok":false,"error_code":400,"description":"Bad Request: PHOTO_INVALID_DIMENSIONS"}',
+        } as unknown as Response;
+      }
+      if (u.includes("/sendDocument")) {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, result: {} }),
+          text: async () => "",
         } as unknown as Response;
       }
       return {
@@ -443,13 +448,106 @@ describe("/summarize — chart (quick-260519-p3g multipart)", () => {
       text: "/summarize",
     };
     await expect(handleCommand("token", msg, allowlist)).resolves.not.toThrow();
-    // sendPhoto был вызван 1 раз (попытка), narrative — отправлен ранее.
-    const photoBodies = multipartCallsTo("sendPhoto");
-    expect(photoBodies.length).toBe(1);
-    // Узлы narrative-доставки прошли успешно.
+    // sendPhoto был вызван 1 раз.
+    expect(multipartCallsTo("sendPhoto").length).toBe(1);
+    // sendDocument fallback: assert форма, поля и blob.
+    const docBodies = multipartCallsTo("sendDocument");
+    expect(docBodies.length).toBe(1);
+    const docForm = docBodies[0];
+    expect(docForm.get("chat_id")).toBe("555");
+    expect(String(docForm.get("caption"))).toMatch(/Δ цены/);
+    const docBlob = docForm.get("document");
+    expect(docBlob).toBeInstanceOf(Blob);
+    expect((docBlob as Blob).type).toBe("image/png");
+    expect((docBlob as Blob).size).toBe(pngBytes.length);
+    // Narrative всё равно доставлен.
     const sendCalls = fetchCallsTo("sendMessage");
-    expect(sendCalls.some((c) => String(c.text).includes("LLM narrative"))).toBe(
-      true
-    );
+    expect(
+      sendCalls.some((c) => String(c.text).includes("LLM narrative"))
+    ).toBe(true);
+  });
+
+  it("handler does NOT crash when both sendPhoto AND fallback sendDocument fail", async () => {
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    mockedGenerateChartPng.mockResolvedValueOnce(pngBytes);
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/sendPhoto")) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({}),
+          text: async () =>
+            '{"ok":false,"error_code":400,"description":"Bad Request: PHOTO_INVALID_DIMENSIONS"}',
+        } as unknown as Response;
+      }
+      if (u.includes("/sendDocument")) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({}),
+          text: async () => "doc rejected",
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({ ok: true, result: [] }),
+        text: async () => "",
+      } as unknown as Response;
+    });
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/summarize",
+    };
+    await expect(handleCommand("token", msg, allowlist)).resolves.not.toThrow();
+    expect(multipartCallsTo("sendPhoto").length).toBe(1);
+    expect(multipartCallsTo("sendDocument").length).toBe(1);
+    // Narrative всё равно доставлен.
+    const sendCalls = fetchCallsTo("sendMessage");
+    expect(
+      sendCalls.some((c) => String(c.text).includes("LLM narrative"))
+    ).toBe(true);
+  });
+
+  it("does NOT fall back to sendDocument on non-PHOTO_INVALID_DIMENSIONS error", async () => {
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    mockedGenerateChartPng.mockResolvedValueOnce(pngBytes);
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/sendPhoto")) {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({}),
+          text: async () => "internal server error",
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({ ok: true, result: [] }),
+        text: async () => "",
+      } as unknown as Response;
+    });
+    const allowlist = new Set([111]);
+    const msg = {
+      message_id: 1,
+      chat: { id: 555 },
+      from: { id: 111 },
+      text: "/summarize",
+    };
+    await expect(handleCommand("token", msg, allowlist)).resolves.not.toThrow();
+    expect(multipartCallsTo("sendPhoto").length).toBe(1);
+    // sendDocument НЕ должен быть вызван — fallback не срабатывает на non-PHOTO_INVALID_DIMENSIONS.
+    expect(multipartCallsTo("sendDocument").length).toBe(0);
+    // Narrative всё равно доставлен.
+    const sendCalls = fetchCallsTo("sendMessage");
+    expect(
+      sendCalls.some((c) => String(c.text).includes("LLM narrative"))
+    ).toBe(true);
   });
 });
