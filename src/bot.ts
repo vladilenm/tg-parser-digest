@@ -74,6 +74,33 @@ interface TgReplyMarkup {
   inline_keyboard: TgInlineKeyboardButton[][];
 }
 
+// BOT-UI-01 / D-01 / D-05: reply-keyboard 2×2 под полем ввода.
+// Текст кнопки = текст сообщения, который юзер шлёт боту (Telegram эмулирует input);
+// в handleCommand есть EMOJI_BUTTON_MAP, который нормализует такой text → "/cmd".
+interface TgKeyboardButton {
+  text: string;
+}
+interface TgReplyKeyboardMarkup {
+  keyboard: TgKeyboardButton[][];
+  resize_keyboard?: boolean;
+  is_persistent?: boolean;
+  one_time_keyboard?: boolean;
+}
+
+// BOT-UI-01 / D-05: единая 2×2 нижняя клавиатура. Прикладывается ко всем
+// исходящим сообщениям бот→пользователь, КРОМЕ sendReplyWithKeyboard (inline
+// confirm/cancel для /remove_channel — одновременно reply+inline нельзя:
+// Telegram примет inline и проигнорирует reply, при этом нижняя клавиатура
+// у юзера может временно «исчезнуть» — вернётся со следующим sendMessage).
+const MAIN_KEYBOARD: TgReplyKeyboardMarkup = {
+  keyboard: [
+    [{ text: "📊 Статус загрузок" }, { text: "🧠 Сделать сводку" }],
+    [{ text: "📋 Каналы новостей" }, { text: "❓ Помощь" }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+
 // =============================================================================
 // Module-level state.
 // =============================================================================
@@ -162,6 +189,8 @@ async function sendReply(
     reply_to_message_id: replyToMessageId,
     text,
     disable_web_page_preview: true,
+    // BOT-UI-01 / D-05: каждый ответ бота включает нижнюю клавиатуру 2×2.
+    reply_markup: MAIN_KEYBOARD,
   });
 }
 
@@ -199,6 +228,8 @@ async function sendPlain(
     chat_id: chatId,
     text,
     disable_web_page_preview: true,
+    // BOT-UI-01 / D-05: прогресс-уведомления и финальный отчёт тоже несут клавиатуру.
+    reply_markup: MAIN_KEYBOARD,
   });
 }
 
@@ -216,6 +247,9 @@ async function sendMarkdown(
     text,
     parse_mode: "Markdown",
     disable_web_page_preview: true,
+    // BOT-UI-01 / D-05: финальный markdown-отчёт upload-pipeline / LLM narrative
+    // тоже несут клавиатуру.
+    reply_markup: MAIN_KEYBOARD,
   });
 }
 

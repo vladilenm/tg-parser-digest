@@ -368,6 +368,20 @@ describe("handleCommand /channels (BOT-01)", () => {
     // D-09: reply_to_message_id присутствует.
     expect(sendCalls[0].reply_to_message_id).toBe(1);
     expect(sendCalls[0].chat_id).toBe(555);
+    // BOT-UI-01: sendReply теперь по дефолту прикладывает MAIN_KEYBOARD (reply-keyboard 2×2).
+    const rm = sendCalls[0].reply_markup as {
+      keyboard?: Array<Array<{ text: string }>>;
+      resize_keyboard?: boolean;
+      is_persistent?: boolean;
+    };
+    expect(rm).toBeDefined();
+    expect(rm.keyboard).toBeDefined();
+    expect(rm.keyboard).toEqual([
+      [{ text: "📊 Статус загрузок" }, { text: "🧠 Сделать сводку" }],
+      [{ text: "📋 Каналы новостей" }, { text: "❓ Помощь" }],
+    ]);
+    expect(rm.resize_keyboard).toBe(true);
+    expect(rm.is_persistent).toBe(true);
   });
 
   it("/channels с suffix @botname парсится как /channels", async () => {
@@ -483,6 +497,11 @@ describe("handleCommand /remove_channel (BOT-03 inline-keyboard)", () => {
     const callbackData = flatButtons.map((b) => b.callback_data);
     expect(callbackData).toContain("rm:durov:confirm");
     expect(callbackData).toContain("rm:durov:cancel");
+    // BOT-UI-01: для inline-confirm сообщения reply_markup остаётся inline_keyboard,
+    // а reply-keyboard (поле `keyboard`) НЕ перезатёрт (Telegram принял бы только inline).
+    expect(
+      (replyMarkup as unknown as { keyboard?: unknown }).keyboard
+    ).toBeUndefined();
   });
 
   it("/remove_channel без аргумента → usage-подсказка", async () => {
