@@ -348,7 +348,7 @@ export async function handleDocument(
         ? await reparseFromDisk(week, "birzha_volumes", dict)
         : [];
       await sendPlain(token, chatId, "📊 Готовлю сводку…");
-      const result = analyze(pricesRows, fcaRows, volumeRows);
+      const result = analyze(pricesRows, fcaRows, volumeRows, dict);
       const parts = renderMarkdown(result);
       for (const part of parts) {
         await sendMarkdown(token, chatId, part);

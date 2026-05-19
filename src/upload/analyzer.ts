@@ -3,11 +3,14 @@
 
 import type {
   AnalysisResult,
+  CompanyGroup,
   ParsedRow,
   RefineryDelta,
+  RefineryEntry,
   VolumeTotals,
 } from "./types.js";
 import { isoWeekFolder } from "./storage.js";
+import { getCompany } from "./refineries.js";
 
 /**
  * Группирует строки по canonical, выбирает first/last по дате, считает Δ.
@@ -80,13 +83,43 @@ function periodOf(rows: ParsedRow[]): { min: Date | null; max: Date | null } {
 }
 
 /**
+ * Группирует дельты по company-холдингу.
+ * Если dict пуст/не передан — все дельты попадают в один корзинный "независимые"-bucket
+ * (через fallback getCompany). Возвращает массив, отсортированный по сумме |Δ| desc.
+ */
+function groupDeltasByCompany(
+  deltas: RefineryDelta[],
+  dict: RefineryEntry[]
+): CompanyGroup[] {
+  const byCompany = new Map<string, RefineryDelta[]>();
+  for (const d of deltas) {
+    const company = getCompany(d.canonical, dict);
+    const arr = byCompany.get(company) ?? [];
+    arr.push(d);
+    byCompany.set(company, arr);
+  }
+  const groups: CompanyGroup[] = [];
+  for (const [company, list] of byCompany) {
+    const sumDeltaAbs = list.reduce((s, x) => s + Math.abs(x.deltaAbs), 0);
+    groups.push({ company, deltas: list, sumDeltaAbs });
+  }
+  groups.sort((a, b) => b.sumDeltaAbs - a.sumDeltaAbs);
+  return groups;
+}
+
+/**
  * Главная entry-point. prices/fca/volumes — массивы ParsedRow.
  * Если все три пусты → throw (нечего анализировать).
+ *
+ * dict — словарь refineries для группировки по company. Опционален: если не передан,
+ * все дельты попадут в bucket "независимые" (fallback getCompany). Production-вызов из
+ * bot.ts всегда передаёт loadRefineries().
  */
 export function analyze(
   prices: ParsedRow[],
   fca: ParsedRow[],
-  volumes: ParsedRow[] = []
+  volumes: ParsedRow[] = [],
+  dict: RefineryEntry[] = []
 ): AnalysisResult {
   const all = [...prices, ...fca, ...volumes];
   const { min, max } = periodOf(all);
@@ -98,12 +131,14 @@ export function analyze(
   const deltas = [...birzhaDeltas, ...fcaDeltas].sort(
     (a, b) => Math.abs(b.deltaAbs) - Math.abs(a.deltaAbs)
   );
+  const byCompany = groupDeltasByCompany(deltas, dict);
   const result: AnalysisResult = {
     periodStart: min,
     periodEnd: max,
     weekFolder: isoWeekFolder(max),
     runAt: new Date(),
     deltas,
+    byCompany,
   };
   if (volumes.length > 0) {
     result.volumes = volumeTotals(volumes);

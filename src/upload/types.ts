@@ -65,11 +65,28 @@ export interface VolumeTotals {
   perRefinery: { canonical: string; totalT: number }[];
 }
 
+/**
+ * Группировка дельт по компании-холдингу.
+ * sumDeltaAbs = Σ |deltaAbs| по deltas группы — используется для сортировки групп.
+ * Группы упорядочены по sumDeltaAbs desc (самые «движущиеся» сверху).
+ * Внутри группы deltas наследуют общий сорт (тоже abs desc).
+ */
+export interface CompanyGroup {
+  company: string;
+  deltas: RefineryDelta[];
+  sumDeltaAbs: number;
+}
+
 export interface AnalysisResult {
   periodStart: Date;
   periodEnd: Date;
   weekFolder: string;
   runAt: Date;
   deltas: RefineryDelta[];
+  /**
+   * Дельты, сгруппированные по компании-холдингу. Заполняется analyzer.analyze()
+   * на основе getCompany(canonical, dict). Пустые группы не включаются.
+   */
+  byCompany: CompanyGroup[];
   volumes?: VolumeTotals;
 }
