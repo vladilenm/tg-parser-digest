@@ -4,8 +4,8 @@ milestone: v4.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-05-18T08:24:33.995Z"
-last_activity: 2026-05-18
+last_updated: "2026-05-19T11:31:37.377Z"
+last_activity: 2026-05-19
 progress:
   total_phases: 4
   completed_phases: 4
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-18 - Completed quick task 260518-fug: Добавить ключевое слово Росавтодор в тему битум
+Last activity: 2026-05-19 - Completed quick task 260519-k6c: Добавить блок 'Не удалось распарсить' в конец дайджеста с перечнем недоступных сайтов
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -89,6 +89,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260509-k9l | Persistent storage + daily Telegram backup + pre-deploy snapshot (Variant A volume-only) — branch `deploy` | 2026-05-09 | 8e5ea41 | [260509-k9l-persistent-storage-daily-telegram-backup](./quick/260509-k9l-persistent-storage-daily-telegram-backup/) |
 | 260510-cla | Прототип статического дашборда для дайджестов (`npm run dashboard` → `data/dashboard/index.html`) | 2026-05-10 | 449e4af | [260510-cla-static-dashboard-prototype](./quick/260510-cla-static-dashboard-prototype/) |
 | 260518-fug | Добавить ключевое слово «Росавтодор» в категорию bitumen (Pass 1 классификатор) | 2026-05-18 | 11976c5 | [260518-fug-add-rosavtodor-to-bitumen](./quick/260518-fug-add-rosavtodor-to-bitumen/) |
+| 260519-k6c | Блок «⚠️ Не удалось распарсить» в конце web-дайджеста с перечнем сайтов, к которым не удалось получить доступ | 2026-05-19 | 2b16c14 | [260519-k6c-failed-sites-block](./quick/260519-k6c-failed-sites-block/) |
 
 ## Session Continuity
 
