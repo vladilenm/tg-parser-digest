@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-19 - Completed quick task 260519-k6c: Добавить блок 'Не удалось распарсить' в конец дайджеста с перечнем недоступных сайтов
+Last activity: 2026-05-19 - Completed quick task 260519-l11: Bot xlsx upload flow (auto-detect by A1, analyzer + Markdown report to uploader DM)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -90,6 +90,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260510-cla | Прототип статического дашборда для дайджестов (`npm run dashboard` → `data/dashboard/index.html`) | 2026-05-10 | 449e4af | [260510-cla-static-dashboard-prototype](./quick/260510-cla-static-dashboard-prototype/) |
 | 260518-fug | Добавить ключевое слово «Росавтодор» в категорию bitumen (Pass 1 классификатор) | 2026-05-18 | 11976c5 | [260518-fug-add-rosavtodor-to-bitumen](./quick/260518-fug-add-rosavtodor-to-bitumen/) |
 | 260519-k6c | Блок «⚠️ Не удалось распарсить» в конце web-дайджеста с перечнем сайтов, к которым не удалось получить доступ | 2026-05-19 | 2b16c14 | [260519-k6c-failed-sites-block](./quick/260519-k6c-failed-sites-block/) |
+| 260519-l11 | Bot xlsx upload flow — auto-detect by A1, save to data/uploads/YYYY-WW, analyze Δ prices first→last + volumes, Markdown report to uploader DM, /upload_status command | 2026-05-19 | e394f4c | [260519-l11-bot-upload-xlsx-flow-auto-detect-by-a1-s](./quick/260519-l11-bot-upload-xlsx-flow-auto-detect-by-a1-s/) |
 
 ## Session Continuity
 
