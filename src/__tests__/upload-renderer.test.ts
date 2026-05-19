@@ -1,8 +1,12 @@
 // src/__tests__/upload-renderer.test.ts — vitest для renderMarkdown + chunkMarkdown.
 
 import { describe, it, expect } from "vitest";
-import { renderMarkdown } from "../upload/renderer.js";
-import type { AnalysisResult, RefineryDelta } from "../upload/types.js";
+import { renderMarkdown, chunkMarkdown } from "../upload/renderer.js";
+import type {
+  AnalysisResult,
+  CompanyGroup,
+  RefineryDelta,
+} from "../upload/types.js";
 
 const D = (iso: string): Date => new Date(iso);
 
@@ -26,15 +30,28 @@ function makeDelta(
   };
 }
 
+function makeCompanyGroup(
+  company: string,
+  deltas: RefineryDelta[]
+): CompanyGroup {
+  const sumDeltaAbs = deltas.reduce((s, d) => s + Math.abs(d.deltaAbs), 0);
+  return { company, deltas, sumDeltaAbs };
+}
+
 describe("renderMarkdown — small AnalysisResult", () => {
+  const deltas = [
+    makeDelta("Газпромнефть-Омский НПЗ", 31800, 33500),
+    makeDelta("Ангарская НХК", 33750, 33500),
+  ];
   const result: AnalysisResult = {
     periodStart: D("2026-04-30T00:00:00Z"),
     periodEnd: D("2026-05-08T00:00:00Z"),
     weekFolder: "2026-W19",
     runAt: D("2026-05-19T18:00:00Z"),
-    deltas: [
-      makeDelta("Газпромнефть-Омский НПЗ", 31800, 33500),
-      makeDelta("Ангарская НХК", 33750, 33500),
+    deltas,
+    byCompany: [
+      makeCompanyGroup("Газпромнефть", [deltas[0]]),
+      makeCompanyGroup("Роснефть", [deltas[1]]),
     ],
   };
 
@@ -52,9 +69,19 @@ describe("renderMarkdown — small AnalysisResult", () => {
     expect(text).toContain("2026-W19");
   });
 
-  it("includes section header *Цены*", () => {
+  it("includes section header about *Цены*", () => {
     const parts = renderMarkdown(result);
     expect(parts.join("")).toMatch(/Цены/);
+  });
+
+  it("renders company group headers in order (Σ|Δ| desc)", () => {
+    const text = renderMarkdown(result).join("");
+    // Газпромнефть has Δ=+1700 → 1700; Роснефть has Δ=−250 → 250 → ГПН первой.
+    const gpnIdx = text.indexOf("Газпромнефть");
+    const rosneftIdx = text.indexOf("Роснефть");
+    expect(gpnIdx).toBeGreaterThanOrEqual(0);
+    expect(rosneftIdx).toBeGreaterThanOrEqual(0);
+    expect(gpnIdx).toBeLessThan(rosneftIdx);
   });
 
   it("includes each refinery with signed Δ and pct", () => {
@@ -79,12 +106,14 @@ describe("renderMarkdown — small AnalysisResult", () => {
 });
 
 describe("renderMarkdown — with volumes", () => {
+  const d = makeDelta("Омский НПЗ", 31800, 33500);
   const result: AnalysisResult = {
     periodStart: D("2026-04-30T00:00:00Z"),
     periodEnd: D("2026-05-08T00:00:00Z"),
     weekFolder: "2026-W19",
     runAt: D("2026-05-19T18:00:00Z"),
-    deltas: [makeDelta("Омский НПЗ", 31800, 33500)],
+    deltas: [d],
+    byCompany: [makeCompanyGroup("Газпромнефть", [d])],
     volumes: {
       totalT: 15.5,
       perRefinery: [
@@ -116,6 +145,7 @@ describe("renderMarkdown — chunking", () => {
       weekFolder: "2026-W19",
       runAt: D("2026-05-19T18:00:00Z"),
       deltas,
+      byCompany: [makeCompanyGroup("независимые", deltas)],
     };
     const parts = renderMarkdown(result);
     expect(parts.length).toBeGreaterThan(1);
@@ -135,9 +165,33 @@ describe("renderMarkdown — chunking", () => {
       weekFolder: "2026-W19",
       runAt: D("2026-05-19T18:00:00Z"),
       deltas,
+      byCompany: [makeCompanyGroup("независимые", deltas)],
     };
     const parts = renderMarkdown(result);
     expect(parts[0].startsWith("(1/")).toBe(true);
     expect(parts[parts.length - 1].startsWith(`(${parts.length}/${parts.length})`)).toBe(true);
+  });
+});
+
+describe("chunkMarkdown (exported helper for llm.ts)", () => {
+  it("returns input as single part when ≤ max", () => {
+    expect(chunkMarkdown("hello world", 100)).toEqual(["hello world"]);
+  });
+
+  it("splits on \\n\\n boundary when possible", () => {
+    const text = "первая часть тут\n\nвторая часть здесь\n\nтретья наконец";
+    const parts = chunkMarkdown(text, 30);
+    expect(parts.length).toBeGreaterThan(1);
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(30);
+  });
+
+  it("falls back to single \\n when no paragraph break in window", () => {
+    const text = "строка-один-длинная\nстрока-два-длинная\nстрока-три";
+    const parts = chunkMarkdown(text, 25);
+    expect(parts.length).toBeGreaterThan(1);
+  });
+
+  it("throws when a single line exceeds max", () => {
+    expect(() => chunkMarkdown("a".repeat(100), 50)).toThrow();
   });
 });

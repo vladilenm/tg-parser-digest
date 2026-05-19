@@ -2,9 +2,9 @@
 // Telegram Markdown V1: `*bold*`, `_italic_`, простой текст, без хитрого экранирования.
 // chunkMarkdown — inline-копия паттерна chunkHtml из src/deliver.ts (разрыв по \n\n → \n).
 
-import type { AnalysisResult, RefineryDelta } from "./types.js";
+import type { AnalysisResult, CompanyGroup, RefineryDelta } from "./types.js";
 
-const CHUNK_LIMIT = 4000;
+export const CHUNK_LIMIT = 4000;
 const VOLUMES_TOP_N = 10;
 
 // =============================================================================
@@ -76,6 +76,14 @@ function renderDeltaLine(d: RefineryDelta): string {
   return `${d.canonical}: ${fmtNum(d.firstPrice)}₽ → ${fmtNum(d.lastPrice)}₽   Δ ${fmtRubSigned(d.deltaAbs)} (${fmtPctSigned(d.deltaPct)})  [${d.source}]`;
 }
 
+/**
+ * Заголовок группы компаний: «*Газпромнефть*  (Σ|Δ| 4 200 ₽)».
+ * Σ|Δ| даёт пользователю быстрое ощущение «у кого больше движений».
+ */
+function renderCompanyHeader(group: CompanyGroup): string {
+  return `*${group.company}*  (Σ|Δ| ${fmtNum(group.sumDeltaAbs)} ₽)`;
+}
+
 function renderBody(result: AnalysisResult): string {
   const lines: string[] = [];
   lines.push(
@@ -85,11 +93,20 @@ function renderBody(result: AnalysisResult): string {
   lines.push(`Папка: ${result.weekFolder}`);
   lines.push("");
 
-  lines.push("*Цены (Δ first→last)*");
-  if (result.deltas.length === 0) {
-    lines.push("(нет данных)");
+  lines.push("*Цены (Δ first→last) по компаниям*");
+  if (!result.byCompany || result.byCompany.length === 0) {
+    // Fallback на плоский список (для старых вызовов analyze() без dict).
+    if (result.deltas.length === 0) {
+      lines.push("(нет данных)");
+    } else {
+      for (const d of result.deltas) lines.push(renderDeltaLine(d));
+    }
   } else {
-    for (const d of result.deltas) lines.push(renderDeltaLine(d));
+    for (const group of result.byCompany) {
+      lines.push("");
+      lines.push(renderCompanyHeader(group));
+      for (const d of group.deltas) lines.push(renderDeltaLine(d));
+    }
   }
 
   if (result.volumes) {
@@ -113,9 +130,10 @@ function renderBody(result: AnalysisResult): string {
  * Режет Markdown-строку на части ≤ max. Приоритет разрыва: \n\n → \n.
  * Бросает Error если в окне нет ни одного перевода (строка длиннее max).
  *
- * exported for unit tests through renderMarkdown.
+ * Экспортирован: используется renderMarkdown и src/upload/llm.ts (quick-260519-lxu)
+ * для нарезки narrative-сводки от DeepSeek по 4000-char лимиту Telegram.
  */
-function chunkMarkdown(text: string, max: number): string[] {
+export function chunkMarkdown(text: string, max: number): string[] {
   if (text.length <= max) return [text];
   const parts: string[] = [];
   let remaining = text;
