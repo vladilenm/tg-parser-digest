@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-19 - Completed quick task 260519-swc: вырезан chart-блок из /summarize (narrative-only); chart.ts оставлен на полке, вернёмся позже
+Last activity: 2026-05-19 - Completed quick task 260519-tbo: /summarize narrative переключён на Telegram HTML (sendHtml + whitelist <b>/<i>/<code> в NARRATIVE_SYSTEM_PROMPT); upload-pipeline Markdown V1 не тронут
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -100,6 +100,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260519-pwy | chart.ts: при HTTP !ok если body начинается с PNG magic — возвращать bytes вместо throw. Quickchart на невалидный config рисует ошибку текстом на картинке — теперь она едет в TG как обычное фото, причина 400 видна прямо в чате. PNG_MAGIC + hasPngMagic helper, single arrayBuffer read, TextDecoder lossy decode для non-PNG. | 2026-05-19 | 09704e0 | [260519-pwy-chart-ts-http-ok-error-png-bytes-magic-q](./quick/260519-pwy-chart-ts-http-ok-error-png-bytes-magic-q/) |
 | 260519-s1z | bot.ts /summarize chart: добавлен sendDocumentMultipart + inner try/catch в handleSummarizeCommand — на sendPhoto error matching /PHOTO_INVALID_DIMENSIONS/i делаем fallback на /sendDocument (filename chart.png). TG отвергал узкий quickchart error-banner как фото; теперь идёт как файл, preview генерится автоматически. Executor запущен без worktree-isolation после инцидента в pwy. | 2026-05-19 | b0c17f6 | [260519-s1z-bot-summarize-chart-senddocument-fallbac](./quick/260519-s1z-bot-summarize-chart-senddocument-fallbac/) |
 | 260519-swc | Вырезан chart-блок из /summarize handler: убраны import generateChartPng, функции sendPhotoMultipart и sendDocumentMultipart, и весь chart try/catch внутри handleSummarizeCommand. Narrative-only. src/upload/chart.ts и его unit-тесты НЕ тронуты (на полке до следующего раза). −386 строк, 619 тестов зелёные. | 2026-05-19 | feac793 | [260519-swc-remove-chart-block-from-summarize-handle](./quick/260519-swc-remove-chart-block-from-summarize-handle/) |
+| 260519-tbo | /summarize narrative переключён на Telegram HTML: NARRATIVE_SYSTEM_PROMPT просит whitelist `<b>/<i>/<code>` (без `###`/`---`/`**`), новый sendHtml() в bot.ts с parse_mode=HTML, handleSummarizeCommand шлёт parts через sendHtml. sendMarkdown оставлен для upload-pipeline (handleDocument), формат отчётов не тронут. 2601/2601 тестов зелёные. | 2026-05-19 | 5f67c10 | [260519-tbo-llm-narrative-summarize-telegram-html-ma](./quick/260519-tbo-llm-narrative-summarize-telegram-html-ma/) |
 
 ## Session Continuity
 
