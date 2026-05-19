@@ -9,6 +9,7 @@ import { detectUploadType } from "./upload/detect.js";
 import { parseWorkbook } from "./upload/parser.js";
 import { loadRefineries } from "./upload/refineries.js";
 import {
+  findLatestWeekWithUploads,
   isoWeekFolder,
   listWeek,
   saveUpload,
@@ -448,7 +449,11 @@ export async function handleSummarizeCommand(
   msg: TgMessage
 ): Promise<void> {
   const chatId = msg.chat.id;
-  const week = currentMskWeek();
+  // quick-260519-nxc: разрешаем неделю по latest-папке на диске (handleDocument
+  // сохраняет в неделю latest-даты данных — она может отличаться от текущей MSK-
+  // недели). Fallback на currentMskWeek() сохраняем — он работает, если ничего
+  // не загружено (юзер увидит «За эту неделю (W-now) файлов не загружено»).
+  const week = findLatestWeekWithUploads() ?? currentMskWeek();
   const status = listWeek(week);
 
   // Сценарий 1: вообще ничего не загружено.
@@ -663,7 +668,10 @@ export async function handleCommand(
     return;
   }
   if (cmd === "/upload_status") {
-    const week = currentMskWeek();
+    // quick-260519-nxc: см. handleSummarizeCommand — берём неделю по latest-папке
+    // на диске. Иначе после переключения ISO-недели юзер видит «всё пусто», хотя
+    // файлы лежат в предыдущей неделе (handleDocument сохраняет по дате данных).
+    const week = findLatestWeekWithUploads() ?? currentMskWeek();
     const status = listWeek(week);
     const lines = [
       `Папка ${week}:`,
