@@ -865,6 +865,34 @@ async function pollOnce(
   }
 }
 
+/**
+ * BOT-UI-02 / D-02 / D-06: при старте регистрируем 7 команд для меню Telegram
+ * (иконка слева от поля ввода в DM боту). Вызывается ОДИН раз при старте бота.
+ *
+ * На любую ошибку — warn, НЕ падать (D-06): меню некритично для работы;
+ * pollLoop стартует независимо. Паттерн try/catch+warn симметричен deleteWebhook.
+ */
+async function registerBotCommands(token: string): Promise<void> {
+  const commands = [
+    { command: "start", description: "Запустить бота / показать меню" },
+    { command: "help", description: "Инструкция" },
+    {
+      command: "upload_status",
+      description: "Статус загрузок за текущую неделю",
+    },
+    { command: "summarize", description: "LLM-сводка по загруженным xlsx" },
+    { command: "channels", description: "Список каналов" },
+    { command: "add_channel", description: "Добавить канал" },
+    { command: "remove_channel", description: "Удалить канал" },
+  ];
+  try {
+    await tgFetch<{ ok: boolean }>(token, "setMyCommands", { commands });
+    log.info(`[bot] setMyCommands ok (${commands.length} commands)`);
+  } catch (err) {
+    log.warn(`[bot] setMyCommands failed: ${(err as Error).message}`);
+  }
+}
+
 async function pollLoop(
   token: string,
   allowlist: Set<number>
@@ -880,6 +908,10 @@ async function pollLoop(
     log.error(`[bot] deleteWebhook failed: ${(err as Error).message}`);
     // Продолжаем — getUpdates даст 409 если webhook остался, поймаем в catch ниже.
   }
+
+  // BOT-UI-02 / D-02: регистрируем команды для меню Telegram. Не блокирует
+  // polling — внутри try/catch с warn (D-06).
+  await registerBotCommands(token);
 
   // Exp.backoff: 1000/2000/4000ms (паттерн из telegram.ts reconnect).
   const backoffMs = [1000, 2000, 4000];
