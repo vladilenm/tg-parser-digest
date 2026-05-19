@@ -126,7 +126,7 @@ describe("buildLlmNarrative", () => {
 
   it("returns a single-part array when DeepSeek response is short", async () => {
     const client = mockClient(
-      "*Сводка*\n\nЗа период с 30 апреля по 8 мая лидирует Газпромнефть."
+      "<b>Сводка</b>\n\nЗа период с 30 апреля по 8 мая лидирует Газпромнефть."
     );
     const parts = await buildLlmNarrative(makeResult(), { client });
     expect(parts).toHaveLength(1);

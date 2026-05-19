@@ -188,7 +188,7 @@ describe("/summarize — only one of the pair", () => {
 });
 
 describe("/summarize — happy path (pair present)", () => {
-  it("calls buildLlmNarrative and sends parts via sendMessage(parse_mode=Markdown)", async () => {
+  it("calls buildLlmNarrative and sends parts via sendMessage(parse_mode=HTML)", async () => {
     mockedListWeek.mockReturnValue({
       hasPrices: true,
       hasFca: true,
@@ -196,7 +196,7 @@ describe("/summarize — happy path (pair present)", () => {
       lastRunAt: null,
     });
     mockedBuildLlmNarrative.mockResolvedValue([
-      "*Сводка*\n\nЗа период с 30 апреля по 8 мая лидирует Газпромнефть.",
+      "<b>Сводка</b>\n\nЗа период с 30 апреля по 8 мая лидирует Газпромнефть.",
     ]);
     const allowlist = new Set([111]);
     const msg = {
@@ -214,7 +214,7 @@ describe("/summarize — happy path (pair present)", () => {
     expect(progress).toBeDefined();
     const narrative = sendCalls.find((c) => String(c.text).includes("Газпромнефть"));
     expect(narrative).toBeDefined();
-    expect(narrative!.parse_mode).toBe("Markdown");
+    expect(narrative!.parse_mode).toBe("HTML");
   });
 
   it("sends each narrative chunk as a separate sendMessage call", async () => {
