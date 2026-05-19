@@ -19,7 +19,6 @@ import {
 import { analyze } from "./upload/analyzer.js";
 import { renderMarkdown } from "./upload/renderer.js";
 import { buildLlmNarrative } from "./upload/llm.js";
-import { generateChartPng } from "./upload/chart.js";
 import path from "node:path";
 import type { ParsedRow, UploadType } from "./upload/types.js";
 
@@ -253,89 +252,6 @@ async function sendMarkdown(
     // тоже несут клавиатуру.
     reply_markup: MAIN_KEYBOARD,
   });
-}
-
-/**
- * Шлёт PNG-фото через multipart upload (Bot API sendPhoto + FormData/Blob).
- * Используется в /summarize (quick-260519-ojk): combo bar+line chart top-10 НПЗ
- * после LLM-narrative.
- *
- * quick-260519-p3g: было sendPhoto-by-URL (photo=<quickchart.io URL>), TG
- * возвращал 400 — судя по поведению, не скачивает с quickchart.io short URL.
- * Multipart-upload PNG bytes — единственный надёжный путь.
- *
- * Важно: НЕ используем tgFetch — он делает JSON.stringify + content-type
- * application/json. Для multipart fetch сам выставит content-type:
- * multipart/form-data; boundary=... при body: FormData; если задать content-type
- * явно — boundary потеряется и TG ответит 400.
- *
- * На ошибку HTTP !ok — throw c кодом и телом ответа (caller ловит в try/catch).
- */
-async function sendPhotoMultipart(
-  token: string,
-  chatId: number,
-  png: Uint8Array,
-  caption: string
-): Promise<void> {
-  const form = new FormData();
-  form.append("chat_id", String(chatId));
-  form.append("caption", caption);
-  // Blob([Uint8Array]) — в TS5/lib.dom Uint8Array параметризован ArrayBufferLike
-  // (включая SharedArrayBuffer), а BlobPart требует ArrayBuffer. Копируем bytes
-  // в фрешный ArrayBuffer-backed Uint8Array — это даёт ArrayBufferView<ArrayBuffer>
-  // без `as any`.
-  const pngCopy = new Uint8Array(new ArrayBuffer(png.byteLength));
-  pngCopy.set(png);
-  form.append("photo", new Blob([pngCopy], { type: "image/png" }), "chart.png");
-  // BOT-UI-01 / D-05: фото после narrative тоже несёт клавиатуру.
-  form.append("reply_markup", JSON.stringify(MAIN_KEYBOARD));
-
-  const res = await fetch(`${TG_API}/bot${token}/sendPhoto`, {
-    method: "POST",
-    body: form,
-  });
-  if (!res.ok) {
-    const responseBody = await res.text();
-    throw new Error(
-      `[bot] sendPhoto failed: ${res.status} ${responseBody.slice(0, 300)}`
-    );
-  }
-}
-
-/**
- * Fallback для sendPhotoMultipart когда TG отвергает PNG с PHOTO_INVALID_DIMENSIONS
- * (quick-260519-s1z). Используется ТОЛЬКО из handleSummarizeCommand chart-блока —
- * отправляет тот же PNG как документ (TG сгенерирует preview без жёстких ограничений
- * на ratio/dimensions). На !ok — throw, caller ловит во внешнем try/catch.
- */
-async function sendDocumentMultipart(
-  token: string,
-  chatId: number,
-  bytes: Uint8Array,
-  filename: string,
-  caption: string
-): Promise<void> {
-  const form = new FormData();
-  form.append("chat_id", String(chatId));
-  form.append("caption", caption);
-  const bytesCopy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
-  bytesCopy.set(bytes);
-  form.append(
-    "document",
-    new Blob([bytesCopy], { type: "image/png" }),
-    filename
-  );
-  form.append("reply_markup", JSON.stringify(MAIN_KEYBOARD));
-  const res = await fetch(`${TG_API}/bot${token}/sendDocument`, {
-    method: "POST",
-    body: form,
-  });
-  if (!res.ok) {
-    const responseBody = await res.text();
-    throw new Error(
-      `[bot] sendDocument failed: ${res.status} ${responseBody.slice(0, 300)}`
-    );
-  }
 }
 
 // =============================================================================
@@ -580,54 +496,6 @@ export async function handleSummarizeCommand(
     const parts = await buildLlmNarrative(result);
     for (const part of parts) {
       await sendMarkdown(token, chatId, part);
-    }
-
-    // quick-260519-ojk + quick-260519-p3g: визуальный чарт top-10 НПЗ
-    // (Δ цены + объёмы) поверх narrative. Multipart upload PNG bytes (TG не
-    // скачивает с quickchart.io short URL — 400). Изолированный try/catch —
-    // chart failure НЕ должен валить handler: narrative уже доставлен, чарт —
-    // bonus. generateChartPng сам возвращает null при <3 НПЗ и при ошибках
-    // quickchart, но дополнительно защищаемся try/catch на случай неожиданного
-    // throw'а (например, multipart sendPhoto вернул 400).
-    //
-    // quick-260519-s1z: quickchart рисует error-PNG (с текстом ошибки внутри),
-    // TG отвергает sendPhoto с 400 PHOTO_INVALID_DIMENSIONS (узкий text-banner
-    // не проходит ratio-валидацию). Inner try/catch: при PHOTO_INVALID_DIMENSIONS
-    // делаем fallback на sendDocument — тот же PNG уходит как файл, юзер видит
-    // причину 400 на превью документа. На любую другую sendPhoto-ошибку —
-    // re-throw во внешний catch (log.warn, handler не падает).
-    try {
-      const chartPng = await generateChartPng(result);
-      if (chartPng) {
-        try {
-          await sendPhotoMultipart(
-            token,
-            chatId,
-            chartPng,
-            "Δ цены и объёмы по НПЗ (top-10)"
-          );
-        } catch (photoErr) {
-          const photoMsg = (photoErr as Error).message ?? String(photoErr);
-          if (/PHOTO_INVALID_DIMENSIONS/i.test(photoMsg)) {
-            log.warn(
-              `[bot] sendPhoto rejected with PHOTO_INVALID_DIMENSIONS — falling back to sendDocument: ${photoMsg}`
-            );
-            await sendDocumentMultipart(
-              token,
-              chatId,
-              chartPng,
-              "chart.png",
-              "Δ цены и объёмы по НПЗ (top-10)"
-            );
-          } else {
-            throw photoErr;
-          }
-        }
-      }
-    } catch (chartErr) {
-      log.warn(
-        `[bot] /summarize chart failed (narrative was delivered): ${(chartErr as Error).message}`
-      );
     }
   } catch (err) {
     const errMsg = (err as Error).message ?? String(err);
