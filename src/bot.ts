@@ -19,7 +19,7 @@ import {
 import { analyze } from "./upload/analyzer.js";
 import { renderMarkdown } from "./upload/renderer.js";
 import { buildLlmNarrative } from "./upload/llm.js";
-import { generateChartUrl } from "./upload/chart.js";
+import { generateChartPng } from "./upload/chart.js";
 import path from "node:path";
 import type { ParsedRow, UploadType } from "./upload/types.js";
 
@@ -256,24 +256,50 @@ async function sendMarkdown(
 }
 
 /**
- * Шлёт PNG-фото по URL (Bot API sendPhoto, photo=<URL>: TG скачает с публичной
- * ссылки сам — для quickchart.io short URL это работает идеально).
+ * Шлёт PNG-фото через multipart upload (Bot API sendPhoto + FormData/Blob).
  * Используется в /summarize (quick-260519-ojk): combo bar+line chart top-10 НПЗ
- * после LLM-narrative. На ошибку tgFetch — пробрасывается наверх (caller ловит).
+ * после LLM-narrative.
+ *
+ * quick-260519-p3g: было sendPhoto-by-URL (photo=<quickchart.io URL>), TG
+ * возвращал 400 — судя по поведению, не скачивает с quickchart.io short URL.
+ * Multipart-upload PNG bytes — единственный надёжный путь.
+ *
+ * Важно: НЕ используем tgFetch — он делает JSON.stringify + content-type
+ * application/json. Для multipart fetch сам выставит content-type:
+ * multipart/form-data; boundary=... при body: FormData; если задать content-type
+ * явно — boundary потеряется и TG ответит 400.
+ *
+ * На ошибку HTTP !ok — throw c кодом и телом ответа (caller ловит в try/catch).
  */
-async function sendPhoto(
+async function sendPhotoMultipart(
   token: string,
   chatId: number,
-  photoUrl: string,
+  png: Uint8Array,
   caption: string
 ): Promise<void> {
-  await tgFetch<{ ok: boolean }>(token, "sendPhoto", {
-    chat_id: chatId,
-    photo: photoUrl,
-    caption,
-    // BOT-UI-01 / D-05: фото после narrative тоже несёт клавиатуру.
-    reply_markup: MAIN_KEYBOARD,
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption);
+  // Blob([Uint8Array]) — в TS5/lib.dom Uint8Array параметризован ArrayBufferLike
+  // (включая SharedArrayBuffer), а BlobPart требует ArrayBuffer. Копируем bytes
+  // в фрешный ArrayBuffer-backed Uint8Array — это даёт ArrayBufferView<ArrayBuffer>
+  // без `as any`.
+  const pngCopy = new Uint8Array(new ArrayBuffer(png.byteLength));
+  pngCopy.set(png);
+  form.append("photo", new Blob([pngCopy], { type: "image/png" }), "chart.png");
+  // BOT-UI-01 / D-05: фото после narrative тоже несёт клавиатуру.
+  form.append("reply_markup", JSON.stringify(MAIN_KEYBOARD));
+
+  const res = await fetch(`${TG_API}/bot${token}/sendPhoto`, {
+    method: "POST",
+    body: form,
   });
+  if (!res.ok) {
+    const responseBody = await res.text();
+    throw new Error(
+      `[bot] sendPhoto failed: ${res.status} ${responseBody.slice(0, 300)}`
+    );
+  }
 }
 
 // =============================================================================
@@ -520,19 +546,20 @@ export async function handleSummarizeCommand(
       await sendMarkdown(token, chatId, part);
     }
 
-    // quick-260519-ojk: визуальный чарт top-10 НПЗ (Δ цены + объёмы) поверх
-    // narrative. Изолированный try/catch — chart failure НЕ должен валить
-    // handler: narrative уже доставлен, чарт — bonus. generateChartUrl сам
-    // возвращает null при <3 НПЗ и при ошибках quickchart, но дополнительно
-    // защищаемся try/catch на случай неожиданного throw'а (e.g. sendPhoto
-    // вернул 400 если quickchart недоступен из инфраструктуры TG).
+    // quick-260519-ojk + quick-260519-p3g: визуальный чарт top-10 НПЗ
+    // (Δ цены + объёмы) поверх narrative. Multipart upload PNG bytes (TG не
+    // скачивает с quickchart.io short URL — 400). Изолированный try/catch —
+    // chart failure НЕ должен валить handler: narrative уже доставлен, чарт —
+    // bonus. generateChartPng сам возвращает null при <3 НПЗ и при ошибках
+    // quickchart, но дополнительно защищаемся try/catch на случай неожиданного
+    // throw'а (например, multipart sendPhoto вернул 400).
     try {
-      const chartUrl = await generateChartUrl(result);
-      if (chartUrl) {
-        await sendPhoto(
+      const chartPng = await generateChartPng(result);
+      if (chartPng) {
+        await sendPhotoMultipart(
           token,
           chatId,
-          chartUrl,
+          chartPng,
           "Δ цены и объёмы по НПЗ (top-10)"
         );
       }

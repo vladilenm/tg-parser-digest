@@ -7,7 +7,7 @@ import { handleCommand } from "../bot.js";
 import { listWeek } from "../upload/storage.js";
 import { buildLlmNarrative } from "../upload/llm.js";
 import { parseWorkbook } from "../upload/parser.js";
-import { generateChartUrl } from "../upload/chart.js";
+import { generateChartPng } from "../upload/chart.js";
 
 // Глушим channels-store (импортируется bot.ts в module-init).
 vi.mock("../channels-store.js", () => ({
@@ -32,12 +32,12 @@ vi.mock("../upload/llm.js", () => ({
   buildLlmNarrative: vi.fn(),
 }));
 
-// quick-260519-ojk: Mock generateChartUrl — никаких реальных quickchart.io-вызовов.
-// Default в beforeEach ниже: mockResolvedValue(null) — старые 8 тестов остаются
-// зелёными (chart-step просто пропускается). Новые тесты явно перезаписывают
-// mock через mockedGenerateChartUrl.mockResolvedValueOnce(...).
+// quick-260519-ojk + quick-260519-p3g: Mock generateChartPng — никаких реальных
+// quickchart.io-вызовов. Default в beforeEach ниже: mockResolvedValue(null) —
+// старые 8 тестов остаются зелёными (chart-step просто пропускается). Новые
+// тесты явно перезаписывают через mockedGenerateChartPng.mockResolvedValueOnce(...).
 vi.mock("../upload/chart.js", () => ({
-  generateChartUrl: vi.fn(),
+  generateChartPng: vi.fn(),
 }));
 
 // Mock parser.parseWorkbook — чтобы reparseFromDisk не пытался читать xlsx с диска
@@ -67,9 +67,9 @@ vi.mock("node:fs", async () => {
 const mockedListWeek = vi.mocked(listWeek);
 const mockedBuildLlmNarrative = vi.mocked(buildLlmNarrative);
 const mockedParseWorkbook = vi.mocked(parseWorkbook);
-const mockedGenerateChartUrl = vi.mocked(generateChartUrl);
+const mockedGenerateChartPng = vi.mocked(generateChartPng);
 
-// Helper: парсить тело sendMessage из fetch.
+// Helper: парсить тело sendMessage из fetch (JSON-боди).
 function fetchCallsTo(method: string): Array<Record<string, unknown>> {
   const fetchMock = vi.mocked(globalThis.fetch);
   return fetchMock.mock.calls
@@ -77,6 +77,15 @@ function fetchCallsTo(method: string): Array<Record<string, unknown>> {
     .map(([, init]) =>
       JSON.parse(((init as RequestInit | undefined)?.body as string) ?? "{}")
     );
+}
+
+// Helper: достать FormData из вызовов sendPhoto (quick-260519-p3g multipart upload).
+// body — FormData инстанс, а не JSON-строка.
+function multipartCallsTo(method: string): FormData[] {
+  const fetchMock = vi.mocked(globalThis.fetch);
+  return fetchMock.mock.calls
+    .filter(([url]) => typeof url === "string" && url.includes(`/${method}`))
+    .map(([, init]) => (init as RequestInit | undefined)?.body as FormData);
 }
 
 beforeEach(() => {
@@ -89,10 +98,10 @@ beforeEach(() => {
       text: async () => "",
     })
   );
-  // quick-260519-ojk: default null — chart-step пропускается, существующие 8
-  // тестов /summarize не упадут из-за лишнего sendPhoto-вызова. Тесты chart-
-  // блока (внизу) явно перезаписывают через mockResolvedValueOnce.
-  mockedGenerateChartUrl.mockResolvedValue(null);
+  // quick-260519-ojk + quick-260519-p3g: default null — chart-step пропускается,
+  // существующие 8 тестов /summarize не упадут из-за лишнего sendPhoto-вызова.
+  // Тесты chart-блока (внизу) явно перезаписывают через mockResolvedValueOnce.
+  mockedGenerateChartPng.mockResolvedValue(null);
   // Default: parseWorkbook returns rows that make analyze() not throw.
   mockedParseWorkbook.mockResolvedValue([
     {
@@ -312,9 +321,10 @@ describe("/summarize — suffix @botname", () => {
 });
 
 // =============================================================================
-// quick-260519-ojk: chart-блок поверх narrative.
+// quick-260519-ojk + quick-260519-p3g: chart-блок поверх narrative.
+// p3g: PNG bytes доставляются через multipart upload (FormData), а не URL.
 // =============================================================================
-describe("/summarize — chart (quick-260519-ojk)", () => {
+describe("/summarize — chart (quick-260519-p3g multipart)", () => {
   beforeEach(() => {
     // Все эти тесты — happy-path narrative (pair собран). Mock-listWeek един.
     mockedListWeek.mockReturnValue({
@@ -328,10 +338,11 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
     ]);
   });
 
-  it("sends PNG chart via sendPhoto after narrative when chartUrl is non-null", async () => {
-    mockedGenerateChartUrl.mockResolvedValueOnce(
-      "https://quickchart.io/chart/render/abc123"
-    );
+  it("sends PNG chart via multipart sendPhoto after narrative when bytes are non-null", async () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+    mockedGenerateChartPng.mockResolvedValueOnce(pngBytes);
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -340,18 +351,21 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
       text: "/summarize",
     };
     await handleCommand("token", msg, allowlist);
-    expect(mockedGenerateChartUrl).toHaveBeenCalledTimes(1);
-    const photoCalls = fetchCallsTo("sendPhoto");
-    expect(photoCalls.length).toBe(1);
-    expect(photoCalls[0].photo).toBe(
-      "https://quickchart.io/chart/render/abc123"
-    );
-    expect(String(photoCalls[0].caption)).toMatch(/Δ цены/);
-    expect(photoCalls[0].chat_id).toBe(555);
+    expect(mockedGenerateChartPng).toHaveBeenCalledTimes(1);
+    const photoBodies = multipartCallsTo("sendPhoto");
+    expect(photoBodies.length).toBe(1);
+    const form = photoBodies[0];
+    expect(form).toBeInstanceOf(FormData);
+    expect(form.get("chat_id")).toBe("555");
+    expect(String(form.get("caption"))).toMatch(/Δ цены/);
+    const photo = form.get("photo");
+    expect(photo).toBeInstanceOf(Blob);
+    expect((photo as Blob).type).toBe("image/png");
+    expect((photo as Blob).size).toBe(pngBytes.length);
   });
 
-  it("does NOT call sendPhoto when generateChartUrl returns null", async () => {
-    mockedGenerateChartUrl.mockResolvedValueOnce(null);
+  it("does NOT call sendPhoto when generateChartPng returns null", async () => {
+    mockedGenerateChartPng.mockResolvedValueOnce(null);
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -360,9 +374,9 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
       text: "/summarize",
     };
     await handleCommand("token", msg, allowlist);
-    expect(mockedGenerateChartUrl).toHaveBeenCalledTimes(1);
-    const photoCalls = fetchCallsTo("sendPhoto");
-    expect(photoCalls.length).toBe(0);
+    expect(mockedGenerateChartPng).toHaveBeenCalledTimes(1);
+    const photoBodies = multipartCallsTo("sendPhoto");
+    expect(photoBodies.length).toBe(0);
     // Narrative всё равно доставлен.
     const sendCalls = fetchCallsTo("sendMessage");
     expect(sendCalls.some((c) => String(c.text).includes("LLM narrative"))).toBe(
@@ -370,8 +384,8 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
     );
   });
 
-  it("does NOT crash handler when generateChartUrl throws unexpectedly", async () => {
-    mockedGenerateChartUrl.mockRejectedValueOnce(new Error("unexpected boom"));
+  it("does NOT crash handler when generateChartPng throws unexpectedly", async () => {
+    mockedGenerateChartPng.mockRejectedValueOnce(new Error("unexpected boom"));
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -386,9 +400,9 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
     expect(sendCalls.some((c) => String(c.text).includes("LLM narrative"))).toBe(
       true
     );
-    // sendPhoto НЕ вызывался (throw случился до tgFetch).
-    const photoCalls = fetchCallsTo("sendPhoto");
-    expect(photoCalls.length).toBe(0);
+    // sendPhoto НЕ вызывался (throw случился до multipart-fetch).
+    const photoBodies = multipartCallsTo("sendPhoto");
+    expect(photoBodies.length).toBe(0);
     // Также не должно появиться сообщение про «Не удалось получить LLM-сводку» —
     // narrative-шаг прошёл успешно.
     expect(
@@ -396,13 +410,12 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
     ).toBe(false);
   });
 
-  it("does NOT call sendPhoto when sendPhoto-tgFetch returns 400 (TG can't fetch URL)", async () => {
-    // Симулируем сценарий: chartUrl получен, но tgFetch sendPhoto падает с 400
-    // (например, URL приватный или quickchart cached out). Hand'ler не падает,
+  it("does NOT crash handler when multipart sendPhoto returns 400", async () => {
+    // Симулируем сценарий: PNG bytes получены, но TG вернул 400 на multipart
+    // (теоретический edge — например, PNG corrupt). Handler не падает,
     // narrative доставлен, sendPhoto одна попытка — потом catch + warn.
-    mockedGenerateChartUrl.mockResolvedValueOnce(
-      "https://quickchart.io/chart/render/xyz"
-    );
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    mockedGenerateChartPng.mockResolvedValueOnce(pngBytes);
     // Перехватываем fetch: для sendPhoto возвращаем 400.
     const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock.mockImplementation(async (url: string | URL | Request) => {
@@ -413,7 +426,7 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
           status: 400,
           statusText: "Bad Request",
           json: async () => ({}),
-          text: async () => "PHOTO_INVALID_URL",
+          text: async () => "PHOTO_INVALID_DIMENSIONS",
         } as unknown as Response;
       }
       return {
@@ -431,8 +444,8 @@ describe("/summarize — chart (quick-260519-ojk)", () => {
     };
     await expect(handleCommand("token", msg, allowlist)).resolves.not.toThrow();
     // sendPhoto был вызван 1 раз (попытка), narrative — отправлен ранее.
-    const photoCalls = fetchCallsTo("sendPhoto");
-    expect(photoCalls.length).toBe(1);
+    const photoBodies = multipartCallsTo("sendPhoto");
+    expect(photoBodies.length).toBe(1);
     // Узлы narrative-доставки прошли успешно.
     const sendCalls = fetchCallsTo("sendMessage");
     expect(sendCalls.some((c) => String(c.text).includes("LLM narrative"))).toBe(

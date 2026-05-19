@@ -1,11 +1,12 @@
 // src/__tests__/upload-chart.test.ts — vitest для chart.ts (quick-260519-ojk).
 // Mock fetchImpl — никаких реальных вызовов quickchart.io.
+// quick-260519-p3g: переход на PNG bytes (Uint8Array) вместо URL.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   buildChartConfig,
-  fetchQuickChartUrl,
-  generateChartUrl,
+  fetchQuickChartPng,
+  generateChartPng,
 } from "../upload/chart.js";
 import type {
   AnalysisResult,
@@ -14,6 +15,14 @@ import type {
 } from "../upload/types.js";
 
 const D = (iso: string): Date => new Date(iso);
+
+// Минимальный валидный PNG-заголовок (8 байт magic + IHDR).
+// Достаточно, чтобы тесты не падали на bytes.length === 0.
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // magic
+  0x00, 0x00, 0x00, 0x0d, // IHDR length
+  0x49, 0x48, 0x44, 0x52, // "IHDR"
+]);
 
 function makeDelta(
   canonical: string,
@@ -167,28 +176,34 @@ describe("buildChartConfig", () => {
 });
 
 // =============================================================================
-// fetchQuickChartUrl — POST к quickchart.io, mock fetch.
+// fetchQuickChartPng — POST к quickchart.io/chart, mock fetch.
+// quick-260519-p3g: возвращает Uint8Array PNG bytes.
 // =============================================================================
-describe("fetchQuickChartUrl", () => {
+describe("fetchQuickChartPng", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("posts JSON to /chart/create and returns url on success", async () => {
+  it("posts JSON to /chart and returns PNG bytes on success", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       statusText: "OK",
-      json: async () => ({ success: true, url: "https://quickchart.io/chart/render/abc123" }),
+      arrayBuffer: async () => PNG_BYTES.buffer.slice(
+        PNG_BYTES.byteOffset,
+        PNG_BYTES.byteOffset + PNG_BYTES.byteLength
+      ),
     }) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
-    const url = await fetchQuickChartUrl(cfg, fetchImpl);
-    expect(url).toBe("https://quickchart.io/chart/render/abc123");
+    const bytes = await fetchQuickChartPng(cfg, fetchImpl);
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes.length).toBeGreaterThan(0);
     // verify request shape
     const fetchMock = fetchImpl as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [calledUrl, init] = fetchMock.mock.calls[0];
-    expect(calledUrl).toContain("quickchart.io/chart/create");
+    // /chart (не /chart/create — quick-260519-p3g)
+    expect(calledUrl).toBe("https://quickchart.io/chart");
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.chart).toBeDefined();
     expect(body.backgroundColor).toBe("white");
@@ -202,47 +217,52 @@ describe("fetchQuickChartUrl", () => {
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
-      json: async () => ({}),
+      arrayBuffer: async () => new ArrayBuffer(0),
     }) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
-    await expect(fetchQuickChartUrl(cfg, fetchImpl)).rejects.toThrow(/HTTP 500/);
+    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/HTTP 500/);
   });
 
-  it("throws when response.success is false", async () => {
+  it("throws when response body is empty (zero bytes)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       statusText: "OK",
-      json: async () => ({ success: false }),
+      arrayBuffer: async () => new ArrayBuffer(0),
     }) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
-    await expect(fetchQuickChartUrl(cfg, fetchImpl)).rejects.toThrow(/success=false/);
+    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/empty PNG/);
   });
 
   it("throws when fetch rejects (network error)", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("ECONNRESET")) as unknown as typeof fetch;
     const cfg = buildChartConfig(makeResult());
-    await expect(fetchQuickChartUrl(cfg, fetchImpl)).rejects.toThrow(/ECONNRESET/);
+    await expect(fetchQuickChartPng(cfg, fetchImpl)).rejects.toThrow(/ECONNRESET/);
   });
 });
 
 // =============================================================================
-// generateChartUrl — public entry, не throw'ает.
+// generateChartPng — public entry, не throw'ает.
+// quick-260519-p3g: возвращает Uint8Array PNG bytes или null.
 // =============================================================================
-describe("generateChartUrl", () => {
+describe("generateChartPng", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("returns URL on happy path (≥3 НПЗ, quickchart ok)", async () => {
+  it("returns PNG bytes on happy path (≥3 НПЗ, quickchart ok)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       statusText: "OK",
-      json: async () => ({ success: true, url: "https://quickchart.io/chart/render/xyz" }),
+      arrayBuffer: async () => PNG_BYTES.buffer.slice(
+        PNG_BYTES.byteOffset,
+        PNG_BYTES.byteOffset + PNG_BYTES.byteLength
+      ),
     }) as unknown as typeof fetch;
-    const url = await generateChartUrl(makeResult(), { fetchImpl });
-    expect(url).toBe("https://quickchart.io/chart/render/xyz");
+    const bytes = await generateChartPng(makeResult(), { fetchImpl });
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes!.length).toBeGreaterThan(0);
   });
 
   it("returns null when fewer than 3 unique НПЗ with deltas", async () => {
@@ -250,16 +270,16 @@ describe("generateChartUrl", () => {
     const result = makeResult({
       deltas: [makeDelta("A", 100, 200), makeDelta("B", 100, 150)],
     });
-    const url = await generateChartUrl(result, { fetchImpl });
-    expect(url).toBeNull();
+    const bytes = await generateChartPng(result, { fetchImpl });
+    expect(bytes).toBeNull();
     expect(fetchImpl as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
   it("returns null when deltas is empty", async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
     const result = makeResult({ deltas: [] });
-    const url = await generateChartUrl(result, { fetchImpl });
-    expect(url).toBeNull();
+    const bytes = await generateChartPng(result, { fetchImpl });
+    expect(bytes).toBeNull();
   });
 
   it("returns null on quickchart HTTP error (does NOT throw)", async () => {
@@ -267,27 +287,27 @@ describe("generateChartUrl", () => {
       ok: false,
       status: 503,
       statusText: "Service Unavailable",
-      json: async () => ({}),
+      arrayBuffer: async () => new ArrayBuffer(0),
     }) as unknown as typeof fetch;
-    const url = await generateChartUrl(makeResult(), { fetchImpl });
-    expect(url).toBeNull();
+    const bytes = await generateChartPng(makeResult(), { fetchImpl });
+    expect(bytes).toBeNull();
   });
 
-  it("returns null on quickchart success=false (does NOT throw)", async () => {
+  it("returns null on empty PNG body (does NOT throw)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       statusText: "OK",
-      json: async () => ({ success: false, url: null }),
+      arrayBuffer: async () => new ArrayBuffer(0),
     }) as unknown as typeof fetch;
-    const url = await generateChartUrl(makeResult(), { fetchImpl });
-    expect(url).toBeNull();
+    const bytes = await generateChartPng(makeResult(), { fetchImpl });
+    expect(bytes).toBeNull();
   });
 
   it("returns null on network error (does NOT throw)", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("ETIMEDOUT")) as unknown as typeof fetch;
-    const url = await generateChartUrl(makeResult(), { fetchImpl });
-    expect(url).toBeNull();
+    const bytes = await generateChartPng(makeResult(), { fetchImpl });
+    expect(bytes).toBeNull();
   });
 
   it("counts unique canonicals (birzha + fca for same НПЗ = 1 unique)", async () => {
@@ -301,8 +321,8 @@ describe("generateChartUrl", () => {
         makeDelta("Y", 100, 180, "fca"),
       ],
     });
-    const url = await generateChartUrl(result, { fetchImpl });
-    expect(url).toBeNull();
+    const bytes = await generateChartPng(result, { fetchImpl });
+    expect(bytes).toBeNull();
     expect(fetchImpl as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 });

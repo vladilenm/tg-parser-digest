@@ -1,11 +1,15 @@
 // src/upload/chart.ts — генерация combo bar+line чарта top-10 НПЗ через quickchart.io.
 // Quick-260519-ojk: визуальное дополнение к LLM-narrative в /summarize.
+// Quick-260519-p3g: переход c sendPhoto-by-URL на multipart upload. Возвращаем
+// PNG bytes (Uint8Array) вместо короткой ссылки на quickchart.io/chart/render/<hash>.
+// Причина: Telegram отвечал 400 на sendPhoto(photo=<quickchart URL>) — судя по
+// логам прод-инфры TG не скачивает с quickchart.io (content-type/redirect/timeout).
+// Multipart upload PNG bytes — единственный надёжный путь.
 //
 // Public API:
-//   generateChartUrl(result, opts?): Promise<string | null>
+//   generateChartPng(result, opts?): Promise<Uint8Array | null>
 //     null → недостаточно данных (<3 НПЗ с Δ) ИЛИ ошибка quickchart (логируется warn).
-//     URL  → короткая ссылка quickchart.io вида https://quickchart.io/chart/render/<hash>,
-//            пригодная для Telegram sendPhoto (TG скачает по URL сам).
+//     Uint8Array  → PNG bytes, готовые для multipart sendPhoto.
 //
 // Зависимости: только глобальный fetch + AbortController (Node 20.6+). НИ ОДНОЙ
 // новой runtime-зависимости (см. CLAUDE.md Constraints — runtime ровно три).
@@ -17,8 +21,11 @@ import { log } from "../logger.js";
 // Constants.
 // =============================================================================
 
-const QUICKCHART_CREATE_URL = "https://quickchart.io/chart/create";
-const DEFAULT_TIMEOUT_MS = 10_000;
+// quick-260519-p3g: было /chart/create (возвращает JSON с url для рендера через
+// /chart/render/<hash>); теперь /chart (возвращает PNG bytes напрямую с
+// content-type: image/png). Для multipart sendPhoto нужны именно bytes.
+const QUICKCHART_RENDER_URL = "https://quickchart.io/chart";
+const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_WIDTH = 1000;
 const DEFAULT_HEIGHT = 500;
 const TOP_N = 10;
@@ -181,33 +188,29 @@ export function buildChartConfig(result: AnalysisResult): Record<string, unknown
 // quickchart.io client.
 // =============================================================================
 
-interface QuickChartResponse {
-  success: boolean;
-  url?: string;
-}
-
 /**
- * POST chart-config на quickchart.io/chart/create. Возвращает короткий URL
- * (вида https://quickchart.io/chart/render/<hash>), пригодный для Telegram
- * sendPhoto.
+ * POST chart-config на quickchart.io/chart. Возвращает PNG bytes (Uint8Array).
+ * Response: image/png напрямую — читаем через res.arrayBuffer().
  *
  * Throw'ает при:
  *   — HTTP !ok
- *   — JSON parse error
- *   — response.success === false
+ *   — Empty body (bytes.length === 0)
  *   — AbortController timeout (через fetch signal)
  *
  * Экспортирован для unit-теста (mock fetchImpl).
+ *
+ * quick-260519-p3g: было fetchQuickChartUrl → string (url). Изменили на
+ * fetchQuickChartPng → Uint8Array (PNG bytes для multipart sendPhoto).
  */
-export async function fetchQuickChartUrl(
+export async function fetchQuickChartPng(
   config: Record<string, unknown>,
   fetchImpl: typeof fetch = fetch,
   timeoutMs: number = DEFAULT_TIMEOUT_MS
-): Promise<string> {
+): Promise<Uint8Array> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(QUICKCHART_CREATE_URL, {
+    const res = await fetchImpl(QUICKCHART_RENDER_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -222,13 +225,12 @@ export async function fetchQuickChartUrl(
     if (!res.ok) {
       throw new Error(`[chart] HTTP ${res.status} ${res.statusText}`);
     }
-    const data = (await res.json()) as QuickChartResponse;
-    if (!data.success || !data.url) {
-      throw new Error(
-        `[chart] quickchart returned success=false (url=${data.url ?? "—"})`
-      );
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    if (bytes.length === 0) {
+      throw new Error(`[chart] empty PNG body from quickchart`);
     }
-    return data.url;
+    return bytes;
   } finally {
     clearTimeout(timer);
   }
@@ -238,29 +240,32 @@ export async function fetchQuickChartUrl(
 // Public entry.
 // =============================================================================
 
-export interface GenerateChartUrlOptions {
+export interface GenerateChartPngOptions {
   /** Mock-friendly: тесты передают свой fetch. По умолчанию global fetch. */
   fetchImpl?: typeof fetch;
-  /** Override timeout (default 10s). */
+  /** Override timeout (default 15s). */
   timeoutMs?: number;
 }
 
 /**
- * Главный entry-point для bot.ts. Возвращает URL чарта или null.
+ * Главный entry-point для bot.ts. Возвращает PNG bytes чарта или null.
  *
  * null когда:
  *   — уникальных НПЗ с дельтой < MIN_BARS (=3). Визуальный bar-чарт на 1-2 столбцах
  *     бесполезен; лучше не показывать ничего, чем мусор.
- *   — quickchart упал (network/HTTP/timeout/success=false) — в этом случае
+ *   — quickchart упал (network/HTTP/timeout) — в этом случае
  *     log.warn и null, чтобы caller (handleSummarizeCommand) НЕ ломал handler:
  *     narrative уже доставлен, чарт — bonus.
  *
  * НЕ throw'ает.
+ *
+ * quick-260519-p3g: было generateChartUrl → string|null (url). Изменили на
+ * generateChartPng → Uint8Array|null (PNG bytes для multipart sendPhoto).
  */
-export async function generateChartUrl(
+export async function generateChartPng(
   result: AnalysisResult,
-  opts: GenerateChartUrlOptions = {}
-): Promise<string | null> {
+  opts: GenerateChartPngOptions = {}
+): Promise<Uint8Array | null> {
   // Считаем уникальных canonical (одна и та же канонизированная НПЗ может появиться
   // дважды — birzha + fca; для оценки порога интереснее физических НПЗ, а не источников).
   const unique = new Set(result.deltas.map((d) => d.canonical));
@@ -276,12 +281,12 @@ export async function generateChartUrl(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   try {
-    const url = await fetchQuickChartUrl(config, fetchImpl, timeoutMs);
-    log.info(`[chart] ok: ${url}`);
-    return url;
+    const bytes = await fetchQuickChartPng(config, fetchImpl, timeoutMs);
+    log.info(`[chart] ok bytes=${bytes.length}`);
+    return bytes;
   } catch (err) {
     const msg = (err as Error).message ?? String(err);
-    log.warn(`[chart] generateChartUrl failed: ${msg}`);
+    log.warn(`[chart] fail: ${msg}`);
     return null;
   }
 }
