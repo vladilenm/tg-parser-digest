@@ -254,6 +254,27 @@ async function sendMarkdown(
   });
 }
 
+/**
+ * Шлёт HTML-сообщение (parse_mode: "HTML") — используется для LLM-narrative
+ * /summarize (quick-260519-tbo). Telegram HTML whitelist: <b>, <i>, <u>, <s>,
+ * <code>, <pre>, <a>, <blockquote>, <tg-spoiler>. Без <h1>/<hr>/<br>.
+ * Если LLM сгенерит запрещённый тег — Bot API ответит 400 "can't parse entities"
+ * и tgFetch бросит, что поймает try/catch в handleSummarizeCommand.
+ */
+async function sendHtml(
+  token: string,
+  chatId: number,
+  text: string
+): Promise<void> {
+  await tgFetch<{ ok: boolean }>(token, "sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: MAIN_KEYBOARD,
+  });
+}
+
 // =============================================================================
 // Upload pipeline helpers (Plan quick-260519-l11).
 // =============================================================================
@@ -439,7 +460,7 @@ async function reparseFromDisk(
  * Сценарии ответа:
  *   1) В текущей недельной папке нет файлов → "За эту неделю файлов не загружено..."
  *   2) Есть только один из пары prices/fca → "Нужны оба типа. Сейчас есть: <list>..."
- *   3) Есть пара → analyze() → buildLlmNarrative() → sendMarkdown по частям
+ *   3) Есть пара → analyze() → buildLlmNarrative() → sendHtml по частям
  *   4) DeepSeek упал → "❌ Не удалось получить LLM-сводку: <reason>..."
  *
  * Не пишет на диск (никаких writeLastRun) — /summarize читает существующее состояние.
@@ -495,7 +516,7 @@ export async function handleSummarizeCommand(
     const result = analyze(pricesRows, fcaRows, volumeRows, dict);
     const parts = await buildLlmNarrative(result);
     for (const part of parts) {
-      await sendMarkdown(token, chatId, part);
+      await sendHtml(token, chatId, part);
     }
   } catch (err) {
     const errMsg = (err as Error).message ?? String(err);
