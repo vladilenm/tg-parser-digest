@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-20 - Completed quick task 260520-fmt: backup → alert-бот (BOT_TOKEN_ALERTS/ALERTS_CHAT_ID), fallback на TG_CHANNEL_ID удалён
+Last activity: 2026-05-20 - Completed quick task 260520-h5x: dashboard auto-send после tick + slim payload (3 МБ → 348 КБ)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -103,6 +103,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260519-tbo | /summarize narrative переключён на Telegram HTML: NARRATIVE_SYSTEM_PROMPT просит whitelist `<b>/<i>/<code>` (без `###`/`---`/`**`), новый sendHtml() в bot.ts с parse_mode=HTML, handleSummarizeCommand шлёт parts через sendHtml. sendMarkdown оставлен для upload-pipeline (handleDocument), формат отчётов не тронут. 2601/2601 тестов зелёные. | 2026-05-19 | 5f67c10 | [260519-tbo-llm-narrative-summarize-telegram-html-ma](./quick/260519-tbo-llm-narrative-summarize-telegram-html-ma/) |
 | 260519-tmc | Убраны причины ошибок из блока «⚠️ Не удалось распарсить» в web-дайджесте — `buildFailedSitesBlock` рендерит только URL (`• <code>url</code>`); константа `REASON_MAX_CHARS` удалена; тесты `web-scraper.test.ts` обновлены под новый контракт (3 кейса: формат, escape URL, отсутствие reason в выводе). | 2026-05-19 | 43d04fc | [260519-tmc-url](./quick/260519-tmc-url/) |
 | 260520-fmt | backup → alert-бот: `backupAndSend()` теперь читает `BOT_TOKEN_ALERTS` + `ALERTS_CHAT_ID` (без fallback на `TG_BOT_TOKEN`/`TG_BACKUP_CHANNEL_ID`/`TG_CHANNEL_ID`). Если креды alert-бота не заданы — log.warn + skip (паттерн как в `alert.ts:23-32`). Daily tar.gz архив больше не загрязняет канал дайджеста, едет в личку оператору. `.env.example` дополнен пояснением. tsc clean, 2736/2736 тестов зелёные. | 2026-05-20 | 55179e6 | [260520-fmt-backup-alert-bot-switch-tar-gz-to-bot-to](./quick/260520-fmt-backup-alert-bot-switch-tar-gz-to-bot-to/) |
+| 260520-h5x | Dashboard auto-send после tick + slim payload. Вынесен `buildDashboard()` из `scripts/build-dashboard.ts` в `src/dashboard.ts` (scripts стал CLI-shim). Поле `text` удалено из `RawPost` (JS дашборда его не использует) — payload скукожился с 3052 КБ до 348 КБ (8.5×). Добавлен `sendDashboardDocument()` в `src/deliver.ts` (multipart sendDocument через FormData/Blob). В `tick()` после TG+web pipelines собирается dashboard и шлётся в `TG_CHANNEL_ID` файлом `dashboard-DD.MM.YYYY.html` (MSK); ошибка build/send → `sendAlert(stage="dashboard")` + продолжаем, tick не валим. 2600/2600 тестов зелёные. | 2026-05-20 | ee459a6 | [260520-h5x-dashboard-auto-send-after-pipeline-slim-](./quick/260520-h5x-dashboard-auto-send-after-pipeline-slim-/) |
 
 ## Session Continuity
 
