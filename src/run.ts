@@ -10,6 +10,25 @@ import { sendAlert } from "./alert.js";
 import { startBot, stopBot, isBotPolling } from "./bot.js";
 import { ensureSeedFiles } from "./seed.js";
 import { backupAndSend } from "./backup.js";
+import { buildDashboard } from "./dashboard.js";
+import { sendDashboardDocument } from "./deliver.js";
+
+/**
+ * H5X-03: текущая MSK-дата в формате DD.MM.YYYY для имени файла дашборда.
+ * Intl.DateTimeFormat("ru-RU", ...) уже отдаёт "20.05.2026" — replace не нужен,
+ * но добавляем для защиты от runtime'ов, где формат может содержать non-breaking space.
+ */
+function mskDateDmy(): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+    .format(new Date())
+    .replace(/ /g, "")
+    .trim();
+}
 
 // Persistent storage init (per docs/db-deploy.md §2):
 //   1. mkdir -p ${DATA_DIR}/{config,state,raw,output,logs,backups}
@@ -88,6 +107,33 @@ async function tick(): Promise<void> {
         try {
           await sendAlert({
             stage: "web",
+            message: e?.message ?? String(err),
+            runId,
+            stack: e?.stack,
+          });
+        } catch (alertErr) {
+          log.error("alert send failed", alertErr);
+        }
+      }
+
+      // ---- H5X-03/04: Dashboard build + send (must NOT fail tick) ----
+      // Дайджест уже доставлен TG/web блоками выше. Дашборд — nice-to-have
+      // attachment: try/catch ловит ошибку (например, пустой volume или сетевая
+      // блип на sendDocument) → log.error + sendAlert(stage="dashboard") и идём дальше.
+      log.info(`[tick] runId=${runId} ─── Dashboard ───`);
+      try {
+        const { path: dashPath, bytes } = await buildDashboard();
+        log.info(
+          `[tick] runId=${runId} dashboard built: ${dashPath} (${(bytes / 1024).toFixed(1)} KB)`
+        );
+        const fileName = `dashboard-${mskDateDmy()}.html`;
+        await sendDashboardDocument(dashPath, fileName);
+      } catch (err) {
+        const e = err as Error;
+        log.error(`[tick] runId=${runId} dashboard failed`, e);
+        try {
+          await sendAlert({
+            stage: "dashboard",
             message: e?.message ?? String(err),
             runId,
             stack: e?.stack,
