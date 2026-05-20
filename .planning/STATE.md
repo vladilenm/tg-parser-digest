@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-05)
 Phase: 03
 Plan: Not started
 Status: Executing Phase 03
-Last activity: 2026-05-19 - Completed quick task 260519-tmc: Убраны причины ошибок из блока «⚠️ Не удалось распарсить» в web-дайджесте — рендерится только URL
+Last activity: 2026-05-20 - Completed quick task 260520-fmt: backup → alert-бот (BOT_TOKEN_ALERTS/ALERTS_CHAT_ID), fallback на TG_CHANNEL_ID удалён
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -102,6 +102,7 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 | 260519-swc | Вырезан chart-блок из /summarize handler: убраны import generateChartPng, функции sendPhotoMultipart и sendDocumentMultipart, и весь chart try/catch внутри handleSummarizeCommand. Narrative-only. src/upload/chart.ts и его unit-тесты НЕ тронуты (на полке до следующего раза). −386 строк, 619 тестов зелёные. | 2026-05-19 | feac793 | [260519-swc-remove-chart-block-from-summarize-handle](./quick/260519-swc-remove-chart-block-from-summarize-handle/) |
 | 260519-tbo | /summarize narrative переключён на Telegram HTML: NARRATIVE_SYSTEM_PROMPT просит whitelist `<b>/<i>/<code>` (без `###`/`---`/`**`), новый sendHtml() в bot.ts с parse_mode=HTML, handleSummarizeCommand шлёт parts через sendHtml. sendMarkdown оставлен для upload-pipeline (handleDocument), формат отчётов не тронут. 2601/2601 тестов зелёные. | 2026-05-19 | 5f67c10 | [260519-tbo-llm-narrative-summarize-telegram-html-ma](./quick/260519-tbo-llm-narrative-summarize-telegram-html-ma/) |
 | 260519-tmc | Убраны причины ошибок из блока «⚠️ Не удалось распарсить» в web-дайджесте — `buildFailedSitesBlock` рендерит только URL (`• <code>url</code>`); константа `REASON_MAX_CHARS` удалена; тесты `web-scraper.test.ts` обновлены под новый контракт (3 кейса: формат, escape URL, отсутствие reason в выводе). | 2026-05-19 | 43d04fc | [260519-tmc-url](./quick/260519-tmc-url/) |
+| 260520-fmt | backup → alert-бот: `backupAndSend()` теперь читает `BOT_TOKEN_ALERTS` + `ALERTS_CHAT_ID` (без fallback на `TG_BOT_TOKEN`/`TG_BACKUP_CHANNEL_ID`/`TG_CHANNEL_ID`). Если креды alert-бота не заданы — log.warn + skip (паттерн как в `alert.ts:23-32`). Daily tar.gz архив больше не загрязняет канал дайджеста, едет в личку оператору. `.env.example` дополнен пояснением. tsc clean, 2736/2736 тестов зелёные. | 2026-05-20 | 55179e6 | [260520-fmt-backup-alert-bot-switch-tar-gz-to-bot-to](./quick/260520-fmt-backup-alert-bot-switch-tar-gz-to-bot-to/) |
 
 ## Session Continuity
 
