@@ -9,6 +9,9 @@
 import { readdir, readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { paths } from "./paths.js";
+import { log } from "./logger.js";
+import { sendAlert } from "./alert.js";
+import { sendDashboardDocument } from "./deliver.js";
 
 // ---------- Types ----------
 
@@ -576,4 +579,61 @@ export async function buildDashboard(): Promise<{ path: string; bytes: number }>
   await writeFile(outFile, html, "utf8");
   const bytes = Buffer.byteLength(html, "utf8");
   return { path: outFile, bytes };
+}
+
+/**
+ * I5V: текущая MSK-дата в формате DD.MM.YYYY для имени файла дашборда.
+ * Перенесён из src/run.ts — теперь это единственный consumer.
+ * Intl.DateTimeFormat("ru-RU", ...) уже отдаёт "20.05.2026"; replace добавлен для защиты
+ * от runtime'ов, где формат может содержать non-breaking space.
+ */
+function mskDateDmy(): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+    .format(new Date())
+    .replace(/ /g, "")
+    .trim();
+}
+
+/**
+ * I5V-01: build dashboard HTML + send как document attachment в TG_CHANNEL_ID.
+ * НИКОГДА не throw'ит — внутренний try/catch ловит ошибки build/send и
+ * сообщает оператору через sendAlert(stage="dashboard").
+ *
+ * Вызывается из:
+ *   - src/run.ts:tick() после TG+web pipelines (cron-режим, daemon);
+ *   - scripts/run-once.ts (`npm run start:once`);
+ *   - scripts/run-once-web.ts (`npm run start:once:web`).
+ *
+ * runId передаётся caller'ом — попадает в sendAlert payload, чтобы
+ * оператор мог сматчить алёрт с runId pipeline'а в логах.
+ */
+export async function buildAndSendDashboard(runId: string): Promise<void> {
+  log.info(`[dashboard] runId=${runId} build + send start`);
+  try {
+    const { path: dashPath, bytes } = await buildDashboard();
+    log.info(
+      `[dashboard] runId=${runId} built: ${dashPath} (${(bytes / 1024).toFixed(1)} KB)`
+    );
+    const fileName = `dashboard-${mskDateDmy()}.html`;
+    await sendDashboardDocument(dashPath, fileName);
+    log.info(`[dashboard] runId=${runId} sent as ${fileName}`);
+  } catch (err) {
+    const e = err as Error;
+    log.error(`[dashboard] runId=${runId} failed`, e);
+    try {
+      await sendAlert({
+        stage: "dashboard",
+        message: e?.message ?? String(err),
+        runId,
+        stack: e?.stack,
+      });
+    } catch (alertErr) {
+      log.error("[dashboard] alert send failed", alertErr);
+    }
+  }
 }
