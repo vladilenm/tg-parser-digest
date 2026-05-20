@@ -109,12 +109,11 @@ export async function backupAndSend(): Promise<void> {
     const sha256 = createHash("sha256").update(buf).digest("hex").slice(0, 16);
     log.info(`[backup] archive: ${archivePath} size=${size}b sha256=${sha256}`);
 
-    const token = process.env.TG_BOT_TOKEN;
-    const chatId =
-      process.env.TG_BACKUP_CHANNEL_ID || process.env.TG_CHANNEL_ID;
+    const token = process.env.BOT_TOKEN_ALERTS;
+    const chatId = process.env.ALERTS_CHAT_ID;
     if (!token || !chatId) {
       log.warn(
-        "[backup] TG_BOT_TOKEN or TG_BACKUP_CHANNEL_ID/TG_CHANNEL_ID not set — backup skipped"
+        "[backup] BOT_TOKEN_ALERTS или ALERTS_CHAT_ID не задан — backup skipped"
       );
       return;
     }

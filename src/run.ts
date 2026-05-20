@@ -10,6 +10,7 @@ import { sendAlert } from "./alert.js";
 import { startBot, stopBot, isBotPolling } from "./bot.js";
 import { ensureSeedFiles } from "./seed.js";
 import { backupAndSend } from "./backup.js";
+import { buildAndSendDashboard } from "./dashboard.js";
 
 // Persistent storage init (per docs/db-deploy.md §2):
 //   1. mkdir -p ${DATA_DIR}/{config,state,raw,output,logs,backups}
@@ -96,6 +97,10 @@ async function tick(): Promise<void> {
           log.error("alert send failed", alertErr);
         }
       }
+
+      // ---- I5V: Dashboard build + send (never throws, см. src/dashboard.ts) ----
+      log.info(`[tick] runId=${runId} ─── Dashboard ───`);
+      await buildAndSendDashboard(runId);
     } catch (err) {
       // WR-09: catch-all — любая ошибка вне TG/web inner-блоков (например, из jitter
       // или из самого AbortController-кода). Логируем + alert, не пробрасываем в node-cron.

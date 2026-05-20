@@ -9,11 +9,14 @@
 
 import { runWebPipeline } from "../src/web-scraper.js";
 import { logWebRunSummary } from "../src/logger.js";
+import { buildAndSendDashboard } from "../src/dashboard.js";
 
 try {
   const runId = crypto.randomUUID().slice(0, 8);
   const summary = await runWebPipeline(runId);
   logWebRunSummary(summary);
+  // I5V-03: автоотправка дашборда после ручного web-прогона (тот же артефакт, что в cron-tick).
+  await buildAndSendDashboard(runId);
   process.exit(0);
 } catch (err) {
   console.error("[run-once-web] web pipeline failed:", err);

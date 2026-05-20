@@ -1,6 +1,7 @@
 // src/deliver.ts — доставка HTML-дайджеста в приватный Telegram-канал через Bot API.
 // Использует встроенный fetch (Node 20.6+), без каких-либо SDK.
 
+import { readFileSync } from "node:fs";
 import { log } from "./logger.js";
 
 const TELEGRAM_LIMIT = 4096;
@@ -92,4 +93,56 @@ export async function sendToChannel(html: string): Promise<void> {
       `[deliver] part ${i + 1}/${parts.length} sent (${text.length}ch in ${Date.now() - startedAt}ms)`
     );
   }
+}
+
+/**
+ * H5X-03: отправить HTML-файл дашборда как document attachment в канал дайджеста.
+ * Тот же бот (TG_BOT_TOKEN) и тот же чат (TG_CHANNEL_ID), что и `sendToChannel`,
+ * чтобы дашборд приходил сразу после HTML-сообщений дайджеста.
+ *
+ * Контракт ошибок:
+ *   - Если TG_BOT_TOKEN или TG_CHANNEL_ID не заданы — log.warn + return (soft skip,
+ *     дашборд — nice-to-have; ср. `src/alert.ts:23-32`).
+ *   - Если HTTP-вызов упал — throw Error со статусом и телом, чтобы caller
+ *     (src/run.ts:tick()) словил → sendAlert(stage="dashboard"), а не молча проглотил.
+ *
+ * Multipart-паттерн (FormData + Blob) скопирован с `src/backup.ts:tgSendDocument`,
+ * но НЕ импортируем оттуда — это локальная функция backup'а; дублируем сознательно,
+ * чтобы deliver.ts оставался самодостаточным.
+ */
+export async function sendDashboardDocument(
+  filePath: string,
+  fileName: string
+): Promise<void> {
+  const token = process.env.TG_BOT_TOKEN;
+  const chatId = process.env.TG_CHANNEL_ID;
+  if (!token || !chatId) {
+    log.warn(
+      "[deliver] sendDashboardDocument: TG_BOT_TOKEN или TG_CHANNEL_ID не задан — dashboard skipped"
+    );
+    return;
+  }
+
+  const buf = readFileSync(filePath);
+  const blob = new Blob([buf as unknown as ArrayBuffer], { type: "text/html" });
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("document", blob, fileName);
+  form.append("disable_notification", "true");
+
+  const startedAt = Date.now();
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const responseBody = await res.text();
+    log.error(
+      `[deliver] sendDashboardDocument FAILED: HTTP ${res.status} ${responseBody.slice(0, 300)}`
+    );
+    throw new Error(`Telegram sendDocument failed: ${res.status} ${responseBody}`);
+  }
+  log.info(
+    `[deliver] dashboard sent: ${fileName} (${buf.length}b in ${Date.now() - startedAt}ms)`
+  );
 }
