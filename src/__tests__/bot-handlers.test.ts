@@ -26,13 +26,33 @@ vi.mock("../channels-store.js", () => ({
 }));
 
 // Изолируем bot-handlers от реального data/uploads/ — иначе findLatestWeekWithUploads
-// найдёт настоящие dev-загрузки и /summarize пойдёт по happy-path вместо empty-week.
+// найдёт настоящие dev-загрузки и /bitum_preview пойдёт по happy-path вместо empty-week.
+// Phase 4 wave 5: bitum/storage заменил upload/storage; mock'аем оба для надёжности.
 vi.mock("../upload/storage.js", () => ({
   findLatestWeekWithUploads: vi.fn(() => null),
   listWeek: vi.fn(() => ({ hasPrices: false, hasFca: false, hasVolumes: false, lastRunAt: null })),
   isoWeekFolder: vi.fn(() => "2026-W21"),
   saveUpload: vi.fn(),
   writeLastRun: vi.fn(),
+}));
+vi.mock("../bitum/storage.js", () => ({
+  findLatestWeekWithUploads: vi.fn(() => null),
+  listWeekV5: vi.fn(() => ({
+    week: "2026-W21",
+    hasBirzhaPrices: false,
+    hasBirzhaVolumes: false,
+    hasFcaSellers: false,
+    hasAllPrices: false,
+    hasBitumPriceNew: false,
+    lastRunAt: null,
+    allPresent: false,
+    presentCount: 0,
+  })),
+  isoWeekFolder: vi.fn(() => "2026-W21"),
+  saveUpload: vi.fn(),
+  writeLastRun: vi.fn(),
+  weekDir: vi.fn((w: string) => `/tmp/${w}`),
+  resetWeek: vi.fn(() => []),
 }));
 
 const mockedLoadChannels = vi.mocked(loadChannels);
@@ -587,7 +607,7 @@ describe("handleCommand /start (BOT-UI-03)", () => {
 // =============================================================================
 
 describe("handleCommand /help (BOT-UI-04)", () => {
-  it("/help → инструкция содержит ключевые слова (xlsx, биржа, FCA, /summarize, /upload_status, /channels)", async () => {
+  it("/help → инструкция содержит ключевые слова (xlsx, /channels)", async () => {
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -600,10 +620,6 @@ describe("handleCommand /help (BOT-UI-04)", () => {
     expect(calls.length).toBe(1);
     const t = calls[0].text as string;
     expect(t).toMatch(/xlsx/i);
-    expect(t).toMatch(/биржа/i);
-    expect(t).toMatch(/FCA/i);
-    expect(t).toContain("/summarize");
-    expect(t).toContain("/upload_status");
     expect(t).toContain("/channels");
   });
 });
@@ -642,7 +658,7 @@ describe("handleCommand emoji-button mapping (BOT-UI-05)", () => {
     expect(calls[0].text).toMatch(/xlsx/i);
   });
 
-  it("'📊 Статус загрузок' маршрутизируется как /upload_status (текст 'Папка ...')", async () => {
+  it("'📊 Статус загрузок' маршрутизируется как /bitum_status (Phase 4)", async () => {
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -653,10 +669,10 @@ describe("handleCommand emoji-button mapping (BOT-UI-05)", () => {
     await handleCommand("token", msg, allowlist);
     const calls = fetchCallsTo("sendMessage");
     expect(calls.length).toBe(1);
-    expect(calls[0].text).toMatch(/Папка/);
+    expect(calls[0].text).toMatch(/Битум-неделя/);
   });
 
-  it("'🧠 Сделать сводку' маршрутизируется как /summarize (пустая неделя → 'файлов не загружено')", async () => {
+  it("'🧠 Сделать сводку' маршрутизируется как /bitum_preview (Phase 4)", async () => {
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -666,8 +682,9 @@ describe("handleCommand emoji-button mapping (BOT-UI-05)", () => {
     };
     await handleCommand("token", msg, allowlist);
     const calls = fetchCallsTo("sendMessage");
-    expect(calls.length).toBe(1);
-    expect(calls[0].text).toMatch(/файлов не загружено/i);
+    // bitum_preview шлёт progress "📊 Готовлю превью отчёта…" + warning
+    const allTexts = calls.map((c) => c.text as string).join("\n");
+    expect(allTexts).toMatch(/файлов не загружено/i);
   });
 
   it("обычное текстовое сообщение без / и без эмодзи-кнопки → ignored", async () => {

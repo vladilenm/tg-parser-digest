@@ -1,26 +1,18 @@
 // src/bot.ts — Telegram bot polling + commands handler.
 // Использует тот же TG_BOT_TOKEN, что и delivery (D-01). CRUD-обёртки рядом с handler'ами (D-16).
 
-import { readFileSync } from "node:fs";
-import ExcelJS from "exceljs";
+import path from "node:path";
 import { mutate, loadChannels, type ChannelEntry } from "./channels-store.js";
 import { log } from "./logger.js";
-import { detectUploadType } from "./upload/detect.js";
-import { parseWorkbook } from "./upload/parser.js";
-import { loadRefineries } from "./upload/refineries.js";
 import {
-  findLatestWeekWithUploads,
-  isoWeekFolder,
-  listWeek,
-  saveUpload,
-  weekDir,
-  writeLastRun,
-} from "./upload/storage.js";
-import { analyze } from "./upload/analyzer.js";
-import { renderMarkdown } from "./upload/renderer.js";
-import { buildLlmNarrative } from "./upload/llm.js";
-import path from "node:path";
-import type { ParsedRow, UploadType } from "./upload/types.js";
+  handleBitumStatus,
+  handleBitumPreview,
+  handleBitumReport,
+  handleBitumReset,
+  handleBitumDocument,
+  handleBitumCallback,
+} from "./bot-bitum.js";
+import { isoWeekFolder } from "./bitum/storage.js";
 
 // =============================================================================
 // Telegram API минимальные типы — чтобы избежать `any` в polling/handlers.
@@ -346,8 +338,6 @@ export async function handleDocument(
   const chatId = msg.chat.id;
   try {
     await sendPlain(token, chatId, "⏳ Сохраняю файл…");
-
-    // 1) Download
     const { buffer, fileName } = await downloadTgFile(
       token,
       doc.file_id,
@@ -356,179 +346,22 @@ export async function handleDocument(
     log.info(
       `[bot] document received: from=${userId} name=${fileName} size=${buffer.length}`
     );
-
-    // 2) Detect by A1 marker
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer as unknown as ArrayBuffer);
-    const type = detectUploadType(wb);
-    if (!type) {
-      await sendPlain(
-        token,
-        chatId,
-        `❓ Не удалось определить тип файла по A1.\nОжидаемые маркеры:\n- "Цена битум на бирже"\n- "Объем битум на бирже"\n- "Битум цены продавцов FCA"`
-      );
-      return;
-    }
-
-    // 3) Parse THIS upload (to know latest date → which week folder)
-    const dict = loadRefineries();
-    const rows = await parseWorkbook(buffer, type, dict);
-    if (rows.length === 0) {
-      await sendPlain(
-        token,
-        chatId,
-        `⚠️ Файл распознан как ${type}, но строки с данными не найдены.`
-      );
-      return;
-    }
-    let latest = rows[0].date;
-    for (const r of rows) {
-      if (r.date.getTime() > latest.getTime()) latest = r.date;
-    }
-    const week = isoWeekFolder(latest);
-
-    // 4) Save
-    await saveUpload(buffer, type, week);
-    await sendPlain(
-      token,
-      chatId,
-      `✅ Сохранён ${type}.xlsx в data/uploads/${week}/`
-    );
-
-    // 5) If prices + fca both present → re-parse from disk and analyze
-    const status = listWeek(week);
-    if (status.hasPrices && status.hasFca) {
-      await sendPlain(token, chatId, "🔍 Считаю Δ цен…");
-      const pricesRows = await reparseFromDisk(week, "birzha_prices", dict);
-      const fcaRows = await reparseFromDisk(week, "fca", dict);
-      const volumeRows = status.hasVolumes
-        ? await reparseFromDisk(week, "birzha_volumes", dict)
-        : [];
-      await sendPlain(token, chatId, "📊 Готовлю сводку…");
-      const result = analyze(pricesRows, fcaRows, volumeRows, dict);
-      const parts = renderMarkdown(result);
-      for (const part of parts) {
-        await sendMarkdown(token, chatId, part);
-      }
-      writeLastRun(week, new Date());
-    } else {
-      await sendPlain(
-        token,
-        chatId,
-        `📦 Жду пару (нужны prices + fca). Сейчас в ${week}: prices=${status.hasPrices ? "✅" : "❌"}, fca=${status.hasFca ? "✅" : "❌"}, volumes=${status.hasVolumes ? "✅" : "❌"}.`
-      );
-    }
+    // Phase 4 / wave 5: dispatch ALL xlsx through bitum pipeline (classify by content).
+    await handleBitumDocument(token, msg, buffer, fileName);
   } catch (err) {
     const msgText = (err as Error).message ?? String(err);
     log.error(`[bot] handleDocument error: ${msgText}`);
     try {
-      await sendPlain(
-        token,
-        chatId,
-        `⚠️ Ошибка: ${msgText.slice(0, 300)}`
-      );
+      await sendPlain(token, chatId, `⚠️ Ошибка: ${msgText.slice(0, 300)}`);
     } catch {
       // Если даже плейн сообщение не уходит — pollOnce поймает в outer try/catch.
     }
   }
 }
 
-/**
- * Перечитать xlsx с диска (для weekly state). Используется при сборе пары
- * prices+fca, чтобы не зависеть от того, что в данный момент прислал юзер.
- */
-async function reparseFromDisk(
-  week: string,
-  type: UploadType,
-  dict: ReturnType<typeof loadRefineries>
-): Promise<ParsedRow[]> {
-  const filePath = path.join(weekDir(week), `${type}.xlsx`);
-  const buf = readFileSync(filePath);
-  return parseWorkbook(buf, type, dict);
-}
-
 // =============================================================================
-// /summarize (quick-260519-lxu): LLM-narrative поверх битум-аплоадов текущей недели.
-// НЕ дублирует структурный отчёт handleDocument (его генерирует upload-pipeline
-// при ингесте) — даёт human-readable обзор от DeepSeek. Файлы НЕ пишет на диск.
-// =============================================================================
-
-/**
- * Обработчик /summarize. Вынесен из handleCommand для тестируемости
- * (mock OpenAI client инжектируется через env DEEPSEEK_API_KEY + патч OpenAI).
- *
- * Сценарии ответа:
- *   1) В текущей недельной папке нет файлов → "За эту неделю файлов не загружено..."
- *   2) Есть только один из пары prices/fca → "Нужны оба типа. Сейчас есть: <list>..."
- *   3) Есть пара → analyze() → buildLlmNarrative() → sendHtml по частям
- *   4) DeepSeek упал → "❌ Не удалось получить LLM-сводку: <reason>..."
- *
- * Не пишет на диск (никаких writeLastRun) — /summarize читает существующее состояние.
- */
-export async function handleSummarizeCommand(
-  token: string,
-  msg: TgMessage
-): Promise<void> {
-  const chatId = msg.chat.id;
-  // quick-260519-nxc: разрешаем неделю по latest-папке на диске (handleDocument
-  // сохраняет в неделю latest-даты данных — она может отличаться от текущей MSK-
-  // недели). Fallback на currentMskWeek() сохраняем — он работает, если ничего
-  // не загружено (юзер увидит «За эту неделю (W-now) файлов не загружено»).
-  const week = findLatestWeekWithUploads() ?? currentMskWeek();
-  const status = listWeek(week);
-
-  // Сценарий 1: вообще ничего не загружено.
-  if (!status.hasPrices && !status.hasFca && !status.hasVolumes) {
-    await sendReply(
-      token,
-      chatId,
-      msg.message_id,
-      `❓ За эту неделю (${week}) файлов не загружено. Перешлите xlsx с биржей и FCA, потом повторите /summarize.`
-    );
-    return;
-  }
-
-  // Сценарий 2: только один из пары prices/fca.
-  if (!status.hasPrices || !status.hasFca) {
-    const present: string[] = [];
-    if (status.hasPrices) present.push("prices");
-    if (status.hasFca) present.push("fca");
-    if (status.hasVolumes) present.push("volumes");
-    const presentStr = present.length > 0 ? present.join(", ") : "—";
-    await sendReply(
-      token,
-      chatId,
-      msg.message_id,
-      `❓ Нужны оба типа (биржа + FCA). Сейчас в ${week} есть: ${presentStr}. Дозагрузите недостающие и повторите /summarize.`
-    );
-    return;
-  }
-
-  // Сценарий 3: пара собрана → analyze + LLM narrative.
-  try {
-    await sendPlain(token, chatId, "🤖 Готовлю LLM-сводку…");
-    const dict = loadRefineries();
-    const pricesRows = await reparseFromDisk(week, "birzha_prices", dict);
-    const fcaRows = await reparseFromDisk(week, "fca", dict);
-    const volumeRows = status.hasVolumes
-      ? await reparseFromDisk(week, "birzha_volumes", dict)
-      : [];
-    const result = analyze(pricesRows, fcaRows, volumeRows, dict);
-    const parts = await buildLlmNarrative(result);
-    for (const part of parts) {
-      await sendHtml(token, chatId, part);
-    }
-  } catch (err) {
-    const errMsg = (err as Error).message ?? String(err);
-    log.error(`[bot] /summarize error: ${errMsg}`);
-    await sendPlain(
-      token,
-      chatId,
-      `❌ Не удалось получить LLM-сводку: ${errMsg.slice(0, 300)}. Структурный отчёт доступен в предыдущих сообщениях после /upload.`
-    );
-  }
-}
-
+// /summarize and /upload_status handled by handleBitumPreview / handleBitumStatus
+// (Phase 4 wave 5 routing in handleCommand below). Legacy handler removed.
 // =============================================================================
 // CRUD-обёртки (D-16): живут рядом с handler'ами, используют mutate() из Phase 1.
 // =============================================================================
@@ -598,8 +431,8 @@ export async function handleCommand(
   // от юзера; нормализуем до /command, чтобы дальше handler работал унифицированно.
   // Иначе firstWord = "📊", cmd = "📊" — не команда и тихо игнорилось бы.
   const EMOJI_BUTTON_MAP: Record<string, string> = {
-    "📊 Статус загрузок": "/upload_status",
-    "🧠 Сделать сводку": "/summarize",
+    "📊 Статус загрузок": "/bitum_status",
+    "🧠 Сделать сводку": "/bitum_preview",
     "📋 Каналы новостей": "/channels",
     "❓ Помощь": "/help",
   };
@@ -688,27 +521,30 @@ export async function handleCommand(
     );
     return;
   }
+  // Phase 4 wave 5: 4 битум-команды (BITUM-TG-01..04) + legacy aliases.
+  if (cmd === "/bitum_status") {
+    await handleBitumStatus(token, msg);
+    return;
+  }
+  if (cmd === "/bitum_preview") {
+    await handleBitumPreview(token, msg);
+    return;
+  }
+  if (cmd === "/bitum_report") {
+    await handleBitumReport(token, msg);
+    return;
+  }
+  if (cmd === "/bitum_reset") {
+    await handleBitumReset(token, msg);
+    return;
+  }
+  // Aliases — wave 6 добавит one-time deprecation msg (MIGRATE-02).
   if (cmd === "/upload_status") {
-    // quick-260519-nxc: см. handleSummarizeCommand — берём неделю по latest-папке
-    // на диске. Иначе после переключения ISO-недели юзер видит «всё пусто», хотя
-    // файлы лежат в предыдущей неделе (handleDocument сохраняет по дате данных).
-    const week = findLatestWeekWithUploads() ?? currentMskWeek();
-    const status = listWeek(week);
-    const lines = [
-      `Папка ${week}:`,
-      `- prices: ${status.hasPrices ? "✅" : "❌"}`,
-      `- fca: ${status.hasFca ? "✅" : "❌"}`,
-      `- volumes: ${status.hasVolumes ? "✅" : "❌"}`,
-      `Последний прогон: ${
-        status.lastRunAt ? status.lastRunAt.toISOString() : "—"
-      }`,
-    ];
-    await sendReply(token, msg.chat.id, msg.message_id, lines.join("\n"));
+    await handleBitumStatus(token, msg);
     return;
   }
   if (cmd === "/summarize") {
-    // quick-260519-lxu: LLM-narrative от DeepSeek поверх битум-аплоадов недели.
-    await handleSummarizeCommand(token, msg);
+    await handleBitumPreview(token, msg);
     return;
   }
   if (cmd === "/start") {
@@ -785,6 +621,12 @@ export async function handleCallbackQuery(
   if (!allowlist.has(userId)) {
     log.info(`[bot] denied: from=${userId} cmd=callback:${data}`);
     return;
+  }
+
+  // Phase 4 wave 5: битум-callbacks routed first (prefixes: bs: / bp: / br:).
+  if (/^(bs|bp|br):/.test(data)) {
+    const handled = await handleBitumCallback(token, cb);
+    if (handled) return;
   }
 
   const parsed = parseRemoveCallbackData(data);
@@ -905,11 +747,15 @@ async function registerBotCommands(token: string): Promise<void> {
   const commands = [
     { command: "start", description: "Запустить бота / показать меню" },
     { command: "help", description: "Инструкция" },
+    // Битум-команды (Phase 4 milestone v5.0). /summarize и /upload_status
+    // остаются как deprecated алиасы handler-уровня, но НЕ в меню.
+    { command: "bitum_status", description: "Чек-лист битум-недели (5 типов)" },
+    { command: "bitum_preview", description: "Превью битум-отчёта в DM" },
     {
-      command: "upload_status",
-      description: "Статус загрузок за текущую неделю",
+      command: "bitum_report",
+      description: "Битум-отчёт с публикацией в канал",
     },
-    { command: "summarize", description: "LLM-сводка по загруженным xlsx" },
+    { command: "bitum_reset", description: "Сбросить текущую битум-неделю" },
     { command: "channels", description: "Список каналов" },
     { command: "add_channel", description: "Добавить канал" },
     { command: "remove_channel", description: "Удалить канал" },
