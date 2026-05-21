@@ -1,85 +1,145 @@
 # Requirements: tg-parser-demo
 
-**Defined:** 2026-05-05
-**Milestone:** v4.0 Управление каналами + парсинг сайтов
+**Defined:** 2026-05-21
+**Milestone:** v5.0 Битумный недельный отчёт
 **Core Value:** В 20:00 MSK без вмешательства оператора получать в закрытом канале Заказчика структурированный дайджест нефтегаза за последние 24 часа, ранжированный по 5 направлениям и помеченный упоминаниями Роснефть/Лукойл/Газпром, в котором каждая цитата дословно присутствует в исходном посте — без галлюцинаций LLM, без повторов из вчерашних сводок, с полным архивом прогонов на ФС.
 
-## v4.0 Requirements
+**Milestone Goal:** Заказчик присылает 3–5 xlsx-файлов в личку боту в произвольном порядке с произвольными именами; бот опознаёт каждый файл по содержимому (5 типов + unknown с learning-loop), копит «недельный пакет», по команде `/bitum_preview` / `/bitum_report` собирает аналитическую сводку по структуре из [docs/bitum/algoritm.md](../docs/bitum/algoritm.md) и публикует ответом в DM, либо после явного подтверждения — в `TG_CHANNEL_ID` (канал Заказчика).
 
-Requirements for milestone v4.0 «Управление каналами + парсинг сайтов». Each maps to roadmap phases.
+## v5.0 Requirements
 
-### Channel Management (BOT)
+Requirements for milestone v5.0 «Битумный недельный отчёт». Каждый маппится на phase в `ROADMAP.md`. Базис: `src/upload/{detect,parser,refineries,storage,analyzer,renderer,llm}.ts` (v4.0 quick-задачи 260519-l11/lxu/nxc/tbo) расширяется до полноценного `src/bitum/*`.
 
-- [ ] **BOT-01**: Оператор/Заказчик может просмотреть текущий список каналов через `/channels` (username)
-- [ ] **BOT-02**: Оператор/Заказчик может добавить канал через `/add_channel <username>` с валидацией username
-- [ ] **BOT-03**: Оператор/Заказчик может удалить канал через `/remove_channel <username>` с inline-подтверждением
-- [ ] **BOT-04**: Бот отвечает только пользователям из allowlist (`BOT_ALLOWED_USER_IDS` в env)
-- [ ] **BOT-05**: Bot polling запускается внутри daemon-процесса (рядом с cron) без конфликта с GramJS
+### Классификация и приём файлов (CLS)
 
-### Storage Migration (STORE)
+- [x] **BITUM-CLS-01**: Классификатор `classifyFile(buffer): { type, confidence, meta }` возвращает один из шести типов: `birzha_prices` | `birzha_volumes` | `fca_sellers` | `all_prices` | `bitum_price_new` | `unknown`. `confidence ∈ [0, 1]`, `meta` содержит обнаруженный sheet name + A1-маркер.
+- [x] **BITUM-CLS-02**: Сигнатуры хранятся в `src/bitum/signatures.ts` как TypeScript-таблица (не JSON, не БД); каждая сигнатура содержит ожидаемые тексты A1/A3/B3 + (опционально) имена листов. A1-fast-path существующего `detectUploadType` — первая сигнатура.
+- [x] **BITUM-CLS-03**: Если `confidence < 1` или `type = unknown` — бот НЕ сохраняет файл, шлёт inline-keyboard «birzha_prices / birzha_volumes / fca_sellers / all_prices / bitum_price_new / не битум»; ответ оператора дописывает новую сигнатуру в `data/bitum/signatures-learned.json` (append-only, атомарная запись `.tmp + rename`).
+- [x] **BITUM-CLS-04**: Доверие имени файла = 0. Классификация только по содержимому (`buffer`, sheets, A1/A3/B3-маркеры). Имена файлов в логах допустимы, но в `classifyFile` не передаются.
 
-- [ ] **STORE-01**: Каналы хранятся в `channels.json`; pipeline читает каналы из JSON (миграция с YAML завершена и YAML удалён)
-- [ ] **STORE-02**: Атомарная запись `channels.json` через `.tmp + rename` с in-process mutex
-- [ ] **STORE-03**: ~~Auto-migration при старте daemon~~ — OBSOLETE: миграция выполнена post-hoc, YAML-фоллбек удалён в quick-260506-dht.
+### Парсеры (PARSE)
 
-### Web Scraping (WEB)
+- [x] **BITUM-PARSE-01**: `parseBirzhaPrices(buffer): { rows: ParsedRow[], errors }` — нормализует шапку (`replace('БНД-', '')`), умножает значения цен на 1000 (тыс.→руб/тонн), возвращает long-table `[{ date, refineryCanonical, refineryRaw, priceRub }]`.
+- [x] **BITUM-PARSE-02**: `parseBirzhaVolumes(buffer)` — нормализует шапку (`replace('Объем, тыс. тонн: ', '')`), умножает объёмы на 1000 (тыс.т→т), возвращает long-table `[{ date, refineryCanonical, refineryRaw, volumeT }]`.
+- [x] **BITUM-PARSE-03**: `parseFcaSellers(buffer)` — читает long-format с колонками `Дата | Регион | Пункт отгрузки | БНД-*`, возвращает long-table FCA `[{ date, refineryCanonical, region, pointOfShipment, priceRub, source: "fca" }]`.
+- [x] **BITUM-PARSE-04**: `parseAllPrices(buffer)` — берёт вкладку «исходник» (если есть), читает колонки `Пункт отгрузки | Наименование компании | Регион | Тип | Источник | Доставка | Топливо | Цена | Дата`; возвращает обогащённую long-table с готовым маппингом «Пункт отгрузки → Компания».
+- [x] **BITUM-PARSE-05**: `parseBitumPriceNew(buffer)` — читает snapshot на дату с колонками `БНД - Цена недели | БНД - Изменение | ПБВ - Цена недели | ПБВ - Изменение`; возвращает структуру `{ date, bnd: { price, deltaAbs, deltaPct }, pbv: { price, deltaAbs, deltaPct } }` для блока верификации в отчёте.
+- [x] **BITUM-PARSE-06**: Все парсеры идемпотентны (один и тот же buffer → один и тот же результат), Zod-валидация выходной схемы; невалидная строка → `errors.push({ rowNum, reason })`, парсер НЕ падает, продолжает обработку остальных строк.
 
-- [ ] **WEB-01**: Daemon скрейпит список сайтов из `websites.json` (fetch + cheerio) в рамках ежедневного прогона
-- [ ] **WEB-02**: Извлечённый контент проходит тот же DeepSeek pipeline (classify по 5 направлениям)
-- [ ] **WEB-03**: Web-дайджест отправляется отдельным сообщением в канал Заказчика (не смешивается с TG-дайджестом)
-- [ ] **WEB-04**: Валидация извлечённого контента (минимум 200 символов); невалидные страницы пропускаются с логом
+### Холдинг-маппинг (REFINERY)
+
+- [x] **BITUM-REFINERY-01**: `data/refineries.json` расширен полем `company` для всех canonical-НПЗ. Холдинги по спеку:
+  - **Роснефть** ⇐ ООО «РН-Битум», ПАО «НК Роснефть», АО «АНПЗ ВНК», АО «АНХК», АО «РНПК», Саратовский НПЗ, Сызранский НПЗ, Ангарская НХК, Рязанская НПК, Ярославнефтеоргсинтез, Ачинский НПЗ ВНК, Ново-Уфимский НПЗ, Уфимская группа НПЗ
+  - **Газпромнефть** ⇐ ООО «Газпромнефть-Битумные материалы», АО «ГАЗПРОМНЕФТЬ-МНПЗ», АО «ГАЗПРОМНЕФТЬ-ОНПЗ» (Московский НПЗ, Омский НПЗ)
+  - **ЛУКОЙЛ** ⇐ Волгограднефтепереработка, Нижегороднефтеоргсинтез
+  - **Татнефть** ⇐ Таиф-НК
+  - **независимые** ⇐ всё остальное (МПК КРЗ, Сила Сибири, Профнефтересурс, АБЗ Хохольский, Арсенал Юг, Курский БТ, Орскнефтеоргсинтез, Мордовбитум, Новошахтинский НПЗ, Сальский битумный терминал, БТ СТРОЙСЕРВИС, и др.)
+- [x] **BITUM-REFINERY-02**: `getCompany(canonical): "Роснефть" | "Газпромнефть" | "ЛУКОЙЛ" | "Татнефть" | "независимые"` — детерминированный lookup по словарю; неизвестный canonical → `"независимые"` (fallback).
+
+### Сборка отчёта (REPORT)
+
+Структура отчёта = [docs/bitum/algoritm.md](../docs/bitum/algoritm.md) §6 (формат отчёта).
+
+- [x] **BITUM-REPORT-01**: Заголовок отчёта содержит период (`Период: DD MMM – DD MMM YYYY`), краткий summary недели (1–2 предложения, экстрактивный) и блок «на дату [last] средняя цена БНД составила [price] ₽/т ([deltaAbs] ₽/т, [deltaPct]% за неделю)» из `parseBitumPriceNew` snapshot.
+- [x] **BITUM-REPORT-02**: Блок «Объёмы биржевых торгов» (вверху отчёта) — Σ объёма за период (тыс.т) + список по убыванию `topN` НПЗ с volume ≥ порога (по умолчанию topN=7); отдельно выделяется группа Роснефть и блок независимых из `parseBirzhaVolumes`.
+- [x] **BITUM-REPORT-03**: Блок «Роснефть (Σ|Δ| = N ₽)» — сумма абсолютных дельт по группе; буллеты по каждому НПЗ с детализацией биржа/FCA («Саратовский НПЗ (FCA) вырос на +1 000 ₽ (до 28 000 ₽), а на бирже снизился на −2 ₽»). Источник цен указывается явно (биржа | прайс/FCA).
+- [x] **BITUM-REPORT-04**: Блок «Газпромнефть» (после Роснефти) с той же структурой — Σ|Δ| + детализация Московский НПЗ / Омский НПЗ.
+- [x] **BITUM-REPORT-05**: Блок «ЛУКОЙЛ» (после Газпромнефти) — Σ|Δ| + детализация; если нет движений → одно предложение «Цены остались на уровне [предыдущая дата]: [уровни]».
+- [x] **BITUM-REPORT-06**: Блок «Прочие и независимые (Σ|Δ| = N ₽)» — все НПЗ вне трёх групп (Роснефть/Газпромнефть/ЛУКОЙЛ + Татнефть выделяется отдельной строкой при наличии движений); детализация изменившихся, перечень неизменившихся.
+- [x] **BITUM-REPORT-07**: Числа в отчёте экстрактивны — каждое значение (цена, объём, дельта) должно соответствовать ячейке исходного xlsx (для верификации reporter возвращает trace с file/sheet/cell для каждого числа в отчёте); LLM используется только для нарратива (1–2 предложения summary), числа подставляются программно.
+- [x] **BITUM-REPORT-08**: Cross-check: цены из `bitum_price_new` и `all_prices` (`bitum_price` колонка) сверяются с `fca_sellers` (если те же НПЗ присутствуют в обоих файлах); при расхождении > 1% — warning в отчёте с указанием источника-победителя.
+
+### Telegram-команды (TG)
+
+- [x] **BITUM-TG-01**: `/bitum_status` — выводит текущее состояние недели (ISO-week) + чек-лист 5 типов (✅/❌ по каждому) + lastRunAt; заменяет `/upload_status`.
+- [x] **BITUM-TG-02**: `/bitum_preview` — собирает отчёт по структуре algoritm.md и отправляет ответом в DM оператора/Заказчика; НЕ публикует в канал. Заменяет `/summarize`.
+- [x] **BITUM-TG-03**: `/bitum_report` — собирает отчёт, показывает preview в DM + inline-keyboard «📤 Опубликовать в `TG_CHANNEL_ID` / ❌ Отмена»; публикует в канал ТОЛЬКО после нажатия «Опубликовать». При «Отмене» — отчёт остаётся в DM, ничего не публикуется.
+- [x] **BITUM-TG-04**: `/bitum_reset` — обнуляет текущую неделю (удаляет `data/uploads/<week>/`) с обязательным inline-подтверждением «✅ Сбросить / ❌ Отмена»; ответ при успехе — список удалённых файлов.
+- [x] **BITUM-TG-05**: При любой загрузке xlsx (`handleDocument`) ответ владельцу содержит: что распознал (type + confidence), метаданные (период / число строк / число заводов / errors count), чек-лист недели (как `/bitum_status`).
+
+### Миграция (MIGRATE)
+
+- [x] **BITUM-MIGRATE-01**: `src/upload/*` рефакторится в `src/bitum/*`: `detect.ts` → `classifier.ts` (с поддержкой 6 типов), `parser.ts` сплитится на 5 per-type парсеров, `analyzer.ts` дорастает до `byCompany` группировки и Σ|Δ| метрик, `renderer.ts` пишет полную структуру algoritm.md (не Markdown-сводку). Импорты в `src/bot.ts` обновлены.
+- [x] **BITUM-MIGRATE-02**: Старые алиасы команд: `/summarize` → `/bitum_preview`, `/upload_status` → `/bitum_status`; алиас отвечает одним deprecation-сообщением «Команда переименована в /bitum_preview. В v6.0 будет удалена.» + делает то же действие. После v5.x release `/summarize` и `/upload_status` удаляются.
+- [x] **BITUM-MIGRATE-03**: `data/uploads/<week>/` остаётся, добавляются ровно файлы новых типов: `all_prices.xlsx`, `bitum_price_new.xlsx`; `data/bitum/signatures-learned.json` создаётся при первом learning-event.
 
 ## Future Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+Deferred to future release. Tracked but not in current milestone.
 
-### Channel Management (extended)
+### OCR / Vision
 
-- **BOT-06**: Per-site CSS-селекторы в конфиге для точного извлечения контента
-- **BOT-07**: Inline keyboard для выбора канала при удалении (вместо username в команде)
+- **BITUM-OCR-01**: Парсинг jpg/png со снимком экрана (например, средняя цена БНД 28336 ₽/т из терминала). Реализация через DeepSeek-VL или OpenAI vision API. Отложено до стабильного формата скриншотов.
 
-### Web Scraping (extended)
+### UX / Workflow
 
-- **WEB-05**: @mozilla/readability как fallback extractor для сложных страниц
-- **WEB-06**: Кросс-прогонная дедупа для web-контента (аналогично hash-cache для TG)
+- **BITUM-TG-06**: Inline-keyboard выбор недели (если оператор хочет посмотреть отчёт за прошлую неделю вместо текущей).
+- **BITUM-TG-07**: Команда `/bitum_undo` — отменить последнюю публикацию в канале Заказчика (через editMessageText или sendMessage с «отмена предыдущей сводки»).
+- **BITUM-AUTOSEND-01**: Автоматическая публикация `/bitum_report` по cron (например, понедельник 09:00 MSK) с предварительным алертом оператору; cancel-window 30 мин для отмены.
+
+### Data / Verification
+
+- **BITUM-REPORT-09**: Кросс-проверка цен с RSS-фидами (RUPEC и др.); расхождения подсвечиваются в отчёте.
+- **BITUM-PARSE-07**: Поддержка xlsx с несколькими листами (например, `all_prices.xlsx` с вкладками «исходник» + «Лист1» + «свод» — парсить все, не только «исходник»).
 
 ## Out of Scope
 
-Explicitly excluded. Documented to prevent scope creep.
+Explicitly excluded for v5.0.
 
 | Feature | Reason |
 |---------|--------|
-| Bot framework (Telegraf/grammY) | 3 команды обслуживаются raw fetch polling (~80 строк); фреймворк добавляет 200-800 KB overhead |
-| Webhook mode для бота | Требует внешний URL + SSL; polling достаточен для 2 пользователей |
-| Headless browser (Playwright/Puppeteer) | Целевые сайты — статический HTML; cheerio покрывает потребность |
-| Ролевая модель (admin/viewer) | Два пользователя с одинаковыми правами; RBAC избыточен |
-| Web UI для управления каналами | Telegram-бот покрывает UX для оператора и Заказчика |
-| База данных для хранения каналов | JSON-файл с mutex достаточен для ~50 каналов и 2 пользователей |
+| Bot framework (Telegraf/grammY) для битум-команд | 4 битум-команды + 3 канал-команды = 7 handler'ов общего размера ~200 строк; raw fetch polling из v4.0 справляется |
+| Веб-UI для битум-сводки | Telegram-бот покрывает UX оператора и Заказчика; преимуществ от веба нет |
+| База данных для битум-данных | Файловое хранилище ISO-week справляется; ≤5 xlsx в неделю × 50 недель ≈ 250 файлов |
+| Headless browser / OCR через Tesseract | Битум-отчёты приходят только как xlsx в v5.0; OCR — в Future |
+| LLM для извлечения чисел из xlsx | Числа экстрактивны из ячеек; LLM только для нарратива (1–2 предложения summary) |
+| Поддержка xlsx с макросами / VBA | Спека Заказчика — без макросов; ExcelJS не поддерживает в любом случае |
+| Multi-customer | Один Заказчик, один `TG_CHANNEL_ID`; multi-tenancy не нужен (см. v3.0 Out of Scope) |
+| Версионирование отчётов / diff между прогонами | Отчёт всегда «свежий снимок»; история ведётся через git-историю самих xlsx-файлов в `data/uploads/` |
+| Хранение Excel-формул в long-table | Парсеры читают вычисленные значения (`cell.value`); формулы не сохраняются |
+| Backward-compat `data/uploads/` для битума | Переиспользуем существующую ISO-week-структуру; ничего не мигрируем |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
+Which phases cover which requirements. Updated during roadmap creation (Phase TBD).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BOT-01 | Phase 2 | Pending |
-| BOT-02 | Phase 2 | Pending |
-| BOT-03 | Phase 2 | Pending |
-| BOT-04 | Phase 2 | Pending |
-| BOT-05 | Phase 2 | Pending |
-| STORE-01 | Phase 1 | Pending |
-| STORE-02 | Phase 1 | Pending |
-| STORE-03 | Phase 1 | Pending |
-| WEB-01 | Phase 3 | Pending |
-| WEB-02 | Phase 3 | Pending |
-| WEB-03 | Phase 3 | Pending |
-| WEB-04 | Phase 3 | Pending |
+| BITUM-CLS-01 | TBD | Complete |
+| BITUM-CLS-02 | TBD | Complete |
+| BITUM-CLS-03 | TBD | Complete |
+| BITUM-CLS-04 | TBD | Complete |
+| BITUM-PARSE-01 | TBD | Complete |
+| BITUM-PARSE-02 | TBD | Complete |
+| BITUM-PARSE-03 | TBD | Complete |
+| BITUM-PARSE-04 | TBD | Complete |
+| BITUM-PARSE-05 | TBD | Complete |
+| BITUM-PARSE-06 | TBD | Complete |
+| BITUM-REFINERY-01 | TBD | Complete |
+| BITUM-REFINERY-02 | TBD | Complete |
+| BITUM-REPORT-01 | TBD | Complete |
+| BITUM-REPORT-02 | TBD | Complete |
+| BITUM-REPORT-03 | TBD | Complete |
+| BITUM-REPORT-04 | TBD | Complete |
+| BITUM-REPORT-05 | TBD | Complete |
+| BITUM-REPORT-06 | TBD | Complete |
+| BITUM-REPORT-07 | TBD | Complete |
+| BITUM-REPORT-08 | TBD | Complete |
+| BITUM-TG-01 | TBD | Complete |
+| BITUM-TG-02 | TBD | Complete |
+| BITUM-TG-03 | TBD | Complete |
+| BITUM-TG-04 | TBD | Complete |
+| BITUM-TG-05 | TBD | Complete |
+| BITUM-MIGRATE-01 | TBD | Complete |
+| BITUM-MIGRATE-02 | TBD | Complete |
+| BITUM-MIGRATE-03 | TBD | Complete |
 
 **Coverage:**
-- v4.0 requirements: 12 total
-- Mapped to phases: 12
-- Unmapped: 0 ✓
+- v5.0 requirements: 28 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 28 (will be 0 after `/gsd-new-milestone` roadmap step)
 
 ---
-*Requirements defined: 2026-05-05*
-*Last updated: 2026-05-05 — traceability mapped after roadmap creation*
+*Requirements defined: 2026-05-21*
+*Milestone v5.0 — Битумный недельный отчёт*
+*Phase numbering: continues from v4.0 (last phase = 3) → v5.0 starts at Phase 4*
