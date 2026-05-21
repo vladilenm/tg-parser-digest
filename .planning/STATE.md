@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v5.0
-milestone_name: bitum-weekly-report
-status: defining_requirements
-stopped_at: milestone v5.0 started — REQUIREMENTS.md pending
-last_updated: "2026-05-21T00:00:00.000Z"
-last_activity: 2026-05-21
+milestone: v4.0
+milestone_name: milestone
+status: Defining requirements
+stopped_at: Phase 4 context gathered
+last_updated: "2026-05-21T07:38:03.384Z"
+last_activity: 2026-05-21 — Milestone v5.0 started, PROJECT.md updated, REQUIREMENTS.md pending
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -55,6 +55,10 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 4 added: Битумный недельный отчёт (v5.0, single-phase milestone covering all 28 BITUM-* requirements)
 
 ### Key Decisions (v4.0)
 
@@ -108,8 +112,8 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 
 ## Session Continuity
 
-**Last session:** 2026-05-06T11:35:52.854Z
-**Stopped at:** Phase 3 context gathered
+**Last session:** 2026-05-21T07:38:03.382Z
+**Stopped at:** Phase 4 context gathered
 **Next action:** `/gsd-plan-phase 1`
 
 ---
