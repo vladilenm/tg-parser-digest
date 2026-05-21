@@ -22,19 +22,46 @@
 <!-- GSD:stack-start source:STACK.md -->
 ## Technology Stack
 
-Technology stack not yet documented. Will populate after codebase mapping or first phase.
+- Node.js 20.6+ (нужен `--env-file`)
+- TypeScript без шага сборки (`tsx`), ESM, `moduleResolution: bundler`, `strict: true`
+- Runtime deps: `telegram` (GramJS), `openai` (DeepSeek), `exceljs`, `cheerio`, `fast-xml-parser`, `node-cron`, `zod`
+- Test runner: `vitest`
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+- Pure-функции + dict-аргументом, без module-level singleton'ов (`normalizeRefinery(raw, dict)`, `analyze(prices, fca, volumes, dict)`)
+- Lazy client creation для DeepSeek с `temperature: 0`, `maxRetries: 1`, env DEEPSEEK_*
+- Атомарная запись через `.tmp + rename` для всех config/state файлов (channels.json, signatures-learned.json, .last-run.json)
+- Zod-валидация на output парсеров (`ParserResult<T> = { rows, errors }`)
+- HTML output: Telegram parse_mode=HTML, whitelist `<b>`, `<i>`, `<code>`, `<a href>` (БЕЗ `<h1>`/`<hr>`/`<br>`)
+- callback_query handler с pending state в Map<msgId, …> (рестарт бота → теряются — acceptable)
+- Phase 4 (milestone v5.0): битум-pipeline в `src/bitum/*`; legacy `src/upload/*` удалён
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
 ## Architecture
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
+- `src/run.ts` — daemon entry (cron 20:15 MSK + bot polling)
+- `src/bot.ts` — Telegram bot polling + command routing
+- `src/bot-bitum.ts` — битум-handlers (`/bitum_status`, `/bitum_preview`, `/bitum_report`, `/bitum_reset` + xlsx upload + classifier learning UX)
+- `src/bitum/` — milestone v5.0 битум-pipeline:
+  - `types.ts` — все типы (BitumType, ClassifyResult, ParsedRow*, ReportResult, NumberTrace, LearnedSignature, WeekStatusV5)
+  - `signatures.ts` — built-in TS-таблица 5 known signatures
+  - `classifier.ts` — `classifyFile(buffer)` со stepped confidence (A1+A3=1.0, A1=0.7, partial=0.4, none→unknown)
+  - `learned-signatures.ts` — append-only `data/bitum/signatures-learned.json` с atomic .tmp+rename + in-process mutex
+  - `parsers/` — 5 idempotent parsers с Zod-валидацией: birzha-prices, birzha-volumes, fca-sellers, all-prices, bitum-price-new
+  - `refineries.ts` — словарь канонических НПЗ + `normalizeRefinery` + `getCompany`
+  - `storage.ts` — ISO-week storage с WeekStatusV5 (5 boolean флагов) + resetWeek
+  - `analyzer.ts` — `deltasFor` + `byCompanyFixedOrder` (Роснефть→Газпромнефть→ЛУКОЙЛ→Прочие) + `crossCheck` (REPORT-08, env BITUM_CROSS_CHECK_THRESHOLD)
+  - `reporter.ts` — structured HTML по `docs/bitum/algoritm.md` §6 с cell-trace footer (REPORT-07) + partial-render (D-10)
+  - `llm.ts` — hybrid scope (D-08): LLM ТОЛЬКО framing, numbers programmatic; `response_format: json_object`
+- `src/deliver.ts` — TG канал доставки (`chunkHtml` reuse)
+- `src/channels-store.ts` — атомарное хранилище channels.json с mutex
+- `data/uploads/<YYYY-Www>/` — 5 битум xlsx per ISO week
+- `data/bitum/signatures-learned.json` — append-only learned signatures (создаётся при первом learning event)
+- `data/refineries.json` — словарь НПЗ с холдингами (Роснефть/Газпромнефть/ЛУКОЙЛ/Татнефть/независимые)
 <!-- GSD:architecture-end -->
 
 <!-- GSD:skills-start source:skills/ -->
