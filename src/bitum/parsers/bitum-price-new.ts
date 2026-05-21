@@ -1,9 +1,14 @@
 // src/bitum/parsers/bitum-price-new.ts — BITUM-PARSE-05.
-// Snapshot на одну дату. Layout (новый файл от Заказчика, algoritm.md §4):
-//   A1+ — заголовки строк, B+ — данные. Колонка F = «Цена недели», G = «Изменение».
-//   Строка с БНД (контентом A) → bnd.price = F, bnd.deltaAbs = G.
-//   Строка с ПБВ → pbv.price = F, pbv.deltaAbs = G.
-// deltaPct вычисляем из (deltaAbs / (price - deltaAbs)) * 100.
+// Snapshot на одну дату. Реальный формат (algoritm.md §4 + docs/examples):
+//   Row 1: A=Дата, B=Пункт отгрузки, C=Компания, D=Вид базиса, E=Вид цен,
+//          F="БНД - Цена недели", G="БНД - Изменение",
+//          H="ПБВ - Цена недели", I="ПБВ - Изменение".
+//   Row 2+: данные per НПЗ × компания (опционально с пустыми ценами).
+// Snapshot = усреднение по всем строкам с положительной ценой.
+//   bnd.price/deltaAbs = average по колонкам F/G (числовые строки),
+//   pbv.price/deltaAbs = average по колонкам H/I.
+//   deltaAbs текст ("не изм." и т.п.) → 0.
+//   deltaPct = (deltaAbs / (price - deltaAbs)) * 100.
 
 import { z } from "zod";
 import type ExcelJS from "exceljs";
@@ -38,46 +43,86 @@ const SNAPSHOT_SCHEMA = z.object({
   }),
 });
 
-interface Row {
-  price: number;
-  deltaAbs: number;
-  priceCell: string;
-  deltaCell: string;
+interface ColumnSet {
+  dateCol: number;
+  bndPriceCol: number;
+  bndChangeCol: number;
+  pbvPriceCol: number;
+  pbvChangeCol: number;
 }
 
 /**
- * Найти строку, в первой колонке которой есть keyword (case-insensitive).
- * Возвращает { price, deltaAbs, priceCell, deltaCell } с real Excel A1-addresses или null.
+ * Find header columns by name in row 1.
+ * Returns null if required price columns are absent.
  */
-function findRow(ws: ExcelJS.Worksheet, keyword: string): Row | null {
-  const needle = keyword.toLowerCase();
-  for (let r = 1; r <= ws.rowCount; r++) {
-    const label = cellToString(ws.getRow(r).getCell(1).value)
-      .trim()
-      .toLowerCase();
-    if (label.includes(needle)) {
-      const price = cellToNumber(ws.getRow(r).getCell(6).value); // F
-      const deltaAbs = cellToNumber(ws.getRow(r).getCell(7).value); // G
-      if (price != null && deltaAbs != null) {
-        return {
-          price,
-          deltaAbs,
-          priceCell: cellAddress(6, r),
-          deltaCell: cellAddress(7, r),
-        };
-      }
+function findColumns(ws: ExcelJS.Worksheet): ColumnSet | null {
+  const headerRow = ws.getRow(1);
+  let dateCol = 0;
+  let bndPriceCol = 0;
+  let bndChangeCol = 0;
+  let pbvPriceCol = 0;
+  let pbvChangeCol = 0;
+  for (let c = 1; c <= ws.columnCount; c++) {
+    const h = cellToString(headerRow.getCell(c).value).trim().toLowerCase();
+    if (h === "дата") dateCol = c;
+    else if (h.includes("бнд")) {
+      if (h.includes("цена")) bndPriceCol = c;
+      else if (h.includes("изменение")) bndChangeCol = c;
+    } else if (h.includes("пбв")) {
+      if (h.includes("цена")) pbvPriceCol = c;
+      else if (h.includes("изменение")) pbvChangeCol = c;
     }
   }
-  return null;
+  if (!bndPriceCol || !pbvPriceCol) return null;
+  return { dateCol, bndPriceCol, bndChangeCol, pbvPriceCol, pbvChangeCol };
 }
 
-/**
- * Найти дату snapshot'а: смотрим row 1-3 первых 8 колонок, ищем Date cell.
- * Если нет — return new Date() (текущая дата).
- */
-function findDate(ws: ExcelJS.Worksheet): Date {
-  for (let r = 1; r <= 3; r++) {
-    for (let c = 1; c <= 8; c++) {
+interface Aggregated {
+  avgPrice: number;
+  avgDelta: number;
+  firstPriceCell: string;
+  firstDeltaCell: string;
+}
+
+function aggregate(
+  ws: ExcelJS.Worksheet,
+  priceCol: number,
+  changeCol: number,
+): Aggregated | null {
+  const prices: number[] = [];
+  const deltas: number[] = [];
+  let firstPriceRow = 0;
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const price = cellToNumber(row.getCell(priceCol).value);
+    if (price == null || price <= 0) continue;
+    prices.push(price);
+    if (firstPriceRow === 0) firstPriceRow = r;
+    const delta = changeCol > 0
+      ? cellToNumber(row.getCell(changeCol).value) ?? 0
+      : 0;
+    deltas.push(delta);
+  }
+  if (prices.length === 0) return null;
+  const avgPrice = prices.reduce((s, x) => s + x, 0) / prices.length;
+  const avgDelta = deltas.reduce((s, x) => s + x, 0) / deltas.length;
+  return {
+    avgPrice: Math.round(avgPrice),
+    avgDelta: Math.round(avgDelta),
+    firstPriceCell: cellAddress(priceCol, firstPriceRow),
+    firstDeltaCell: cellAddress(changeCol || priceCol, firstPriceRow),
+  };
+}
+
+function findDate(ws: ExcelJS.Worksheet, dateCol: number): Date {
+  if (dateCol > 0) {
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const d = cellToDate(ws.getRow(r).getCell(dateCol).value);
+      if (d) return d;
+    }
+  }
+  for (let r = 1; r <= Math.min(3, ws.rowCount); r++) {
+    for (let c = 1; c <= Math.min(8, ws.columnCount); c++) {
       const d = cellToDate(ws.getRow(r).getCell(c).value);
       if (d) return d;
     }
@@ -99,25 +144,34 @@ export async function parseBitumPriceNew(
     return result;
   }
 
-  const bndRaw = findRow(ws, "бнд");
-  const pbvRaw = findRow(ws, "пбв");
-  if (!bndRaw) {
+  const cols = findColumns(ws);
+  if (!cols) {
     result.errors.push({
       rowNum: 0,
-      reason: "no row with 'БНД' label in column A",
-    });
-    return result;
-  }
-  if (!pbvRaw) {
-    result.errors.push({
-      rowNum: 0,
-      reason: "no row with 'ПБВ' label in column A",
+      reason:
+        "header row 1 does not contain БНД/ПБВ price columns (expected 'БНД - Цена недели' / 'ПБВ - Цена недели')",
     });
     return result;
   }
 
-  const date = findDate(ws);
-  // deltaPct = deltaAbs / oldPrice * 100; oldPrice = price - deltaAbs
+  const bnd = aggregate(ws, cols.bndPriceCol, cols.bndChangeCol);
+  const pbv = aggregate(ws, cols.pbvPriceCol, cols.pbvChangeCol);
+  if (!bnd) {
+    result.errors.push({
+      rowNum: 0,
+      reason: "no rows with valid БНД price",
+    });
+    return result;
+  }
+  if (!pbv) {
+    result.errors.push({
+      rowNum: 0,
+      reason: "no rows with valid ПБВ price",
+    });
+    return result;
+  }
+
+  const date = findDate(ws, cols.dateCol);
   const calcPct = (price: number, deltaAbs: number): number => {
     const old = price - deltaAbs;
     if (old === 0) return 0;
@@ -127,18 +181,18 @@ export async function parseBitumPriceNew(
   const candidate: ParsedBitumPriceNewSnapshot = {
     date,
     bnd: {
-      price: bndRaw.price,
-      deltaAbs: bndRaw.deltaAbs,
-      deltaPct: calcPct(bndRaw.price, bndRaw.deltaAbs),
-      priceCell: bndRaw.priceCell,
-      deltaCell: bndRaw.deltaCell,
+      price: bnd.avgPrice,
+      deltaAbs: bnd.avgDelta,
+      deltaPct: calcPct(bnd.avgPrice, bnd.avgDelta),
+      priceCell: bnd.firstPriceCell,
+      deltaCell: bnd.firstDeltaCell,
     },
     pbv: {
-      price: pbvRaw.price,
-      deltaAbs: pbvRaw.deltaAbs,
-      deltaPct: calcPct(pbvRaw.price, pbvRaw.deltaAbs),
-      priceCell: pbvRaw.priceCell,
-      deltaCell: pbvRaw.deltaCell,
+      price: pbv.avgPrice,
+      deltaAbs: pbv.avgDelta,
+      deltaPct: calcPct(pbv.avgPrice, pbv.avgDelta),
+      priceCell: pbv.firstPriceCell,
+      deltaCell: pbv.firstDeltaCell,
     },
   };
   const parsed = SNAPSHOT_SCHEMA.safeParse(candidate);
