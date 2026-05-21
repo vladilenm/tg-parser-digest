@@ -9,7 +9,7 @@
 // требующих недостающие файлы.
 
 import { chunkHtml } from "../deliver.js";
-import { getCompany } from "../upload/refineries.js";
+import { getCompany } from "./refineries.js";
 import type {
   ParsedRowBirzhaPrice,
   ParsedRowBirzhaVolume,

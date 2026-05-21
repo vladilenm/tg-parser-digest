@@ -33,7 +33,7 @@ import {
   type NarrativeResult,
 } from "./bitum/llm.js";
 import { byCompanyFixedOrder, deltasFor } from "./bitum/analyzer.js";
-import { loadRefineries } from "./upload/refineries.js";
+import { loadRefineries } from "./bitum/refineries.js";
 import type {
   KnownBitumType,
   ClassifyResult,

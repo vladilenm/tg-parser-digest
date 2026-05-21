@@ -2,7 +2,7 @@
 // (Роснефть→Газпромнефть→ЛУКОЙЛ→Прочие — НЕ по Σ|Δ| desc как legacy analyzer).
 // + cross-check (REPORT-08) с warnings.
 
-import { getCompany } from "../upload/refineries.js";
+import { getCompany } from "./refineries.js";
 import type {
   ParsedRowBirzhaVolume,
   RefineryEntry,

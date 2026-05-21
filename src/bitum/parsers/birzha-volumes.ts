@@ -3,7 +3,7 @@
 // префиксом "Объем, тыс. тонн: ". Цена в тыс.т → ×1000 (algoritm.md §1).
 
 import { z } from "zod";
-import { normalizeRefinery } from "../../upload/refineries.js";
+import { normalizeRefinery } from "../refineries.js";
 import type {
   ParsedRowBirzhaVolume,
   ParserResult,

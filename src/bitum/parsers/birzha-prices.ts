@@ -4,8 +4,7 @@
 // тыс.руб/т → руб/т согласно algoritm.md §2.7).
 
 import { z } from "zod";
-import { normalizeRefinery } from "../../upload/refineries.js";
-// ^^ В waves 1-5 импортим из src/upload — wave 6 миграция перенесёт.
+import { normalizeRefinery } from "../refineries.js";
 import type {
   ParsedRowBirzhaPrice,
   ParserResult,

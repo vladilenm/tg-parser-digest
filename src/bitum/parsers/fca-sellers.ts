@@ -3,7 +3,7 @@
 // row 4+ = данные. priceRub = cell value (в руб/т, без множителей).
 
 import { z } from "zod";
-import { normalizeRefinery } from "../../upload/refineries.js";
+import { normalizeRefinery } from "../refineries.js";
 import type {
   ParsedRowFca,
   ParserResult,
