@@ -15,6 +15,9 @@ node_modules/
 data/*
 !data/.gitkeep
 !data/refineries.json
+!data/bitum/
+data/bitum/*
+!data/bitum/.gitkeep
 # Generated dashboard artifact (dev-tool, не версионируется).
 # Уже покрыто `data/*`, но прописано явно для grep-ability.
 /data/dashboard/
