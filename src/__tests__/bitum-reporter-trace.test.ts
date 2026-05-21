@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderBitumReport } from "../bitum/reporter.js";
-import { loadRefineries } from "../upload/refineries.js";
+import { loadRefineries } from "../bitum/refineries.js";
 
 const dict = loadRefineries();
 const today = new Date("2026-05-08T00:00:00Z");

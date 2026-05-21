@@ -5,7 +5,7 @@ import {
   byCompanyFixedOrder,
   crossCheck,
 } from "../bitum/analyzer.js";
-import { loadRefineries } from "../upload/refineries.js";
+import { loadRefineries } from "../bitum/refineries.js";
 
 const dict = loadRefineries();
 

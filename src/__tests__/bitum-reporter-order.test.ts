@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderBitumReport } from "../bitum/reporter.js";
-import { loadRefineries } from "../upload/refineries.js";
+import { loadRefineries } from "../bitum/refineries.js";
 
 describe("bitum/reporter — fixed holding order (per checker B3)", () => {
   const dict = loadRefineries();

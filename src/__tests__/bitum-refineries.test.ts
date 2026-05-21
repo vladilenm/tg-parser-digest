@@ -3,8 +3,7 @@ import {
   loadRefineries,
   normalizeRefinery,
   getCompany,
-} from "../upload/refineries.js";
-// ^^ В waves 1-5 импортим из src/upload — wave 6 миграция перенесёт.
+} from "../bitum/refineries.js";
 
 describe("data/refineries.json — BITUM-REFINERY-01 coverage", () => {
   const dict = loadRefineries();

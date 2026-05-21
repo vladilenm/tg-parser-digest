@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { parseBirzhaPrices } from "../bitum/parsers/birzha-prices.js";
-import { loadRefineries } from "../upload/refineries.js";
+import { loadRefineries } from "../bitum/refineries.js";
 
 const FIXTURES_DIR = path.resolve("docs/examples");
 const FIXTURE_PATH = path.join(FIXTURES_DIR, "birzha — цены НПЗ.xlsx");
