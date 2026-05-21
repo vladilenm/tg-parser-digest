@@ -53,6 +53,6 @@ export const BUILT_IN_SIGNATURES: Signature[] = [
     a3: "пункт отгрузки",
     b3: "регион",
   },
-  { type: "all_prices", a1: "цены на битум все", sheetName: "исходник" },
-  { type: "bitum_price_new", a3: "бнд", b3: "пбв" },
+  { type: "all_prices", a1: "цены битум все", sheetName: "исходник" },
+  { type: "bitum_price_new", a1: "дата", sheetName: "chart data" },
 ];

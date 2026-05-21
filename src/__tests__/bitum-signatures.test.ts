@@ -32,10 +32,10 @@ describe("bitum/signatures", () => {
     expect(s.sheetName).toBe("исходник");
   });
 
-  it("bitum_price_new falls back on A3/B3=БНД/ПБВ (A1 may be empty in snapshot format)", () => {
+  it("bitum_price_new matches by A1='дата' + sheetName='chart data' (snapshot format)", () => {
     const s = BUILT_IN_SIGNATURES.find((x) => x.type === "bitum_price_new")!;
-    expect(s.a3).toBe("бнд");
-    expect(s.b3).toBe("пбв");
+    expect(s.a1).toBe("дата");
+    expect(s.sheetName).toBe("chart data");
   });
 
   it("a1/a3/b3 all lowercase (classifier compares lowercased)", () => {

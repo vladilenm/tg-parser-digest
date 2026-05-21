@@ -61,15 +61,13 @@ describe("bitum/classifier", () => {
     expect(r.confidence).toBe(1.0);
   });
 
-  it("Только A3+B3 match (без A1) → confidence 0.4 (bitum_price_new)", async () => {
+  it("bitum_price_new: A1='Дата' + sheetName='Chart data' → confidence 0.85", async () => {
     const buf = await bufferFromSheet((ws) => {
-      ws.getCell("A3").value = "БНД";
-      ws.getCell("B3").value = "ПБВ";
-    });
+      ws.getCell("A1").value = "Дата";
+    }, "Chart data");
     const r = await classifyFile(buf);
     expect(r.type).toBe("bitum_price_new");
-    // нет A1, есть и a3 и b3 — попадает в "a3 || b3" ветку → 0.4.
-    expect(r.confidence).toBe(0.4);
+    expect(r.confidence).toBe(0.85);
   });
 
   it("Нет matches → { type: unknown, confidence: 0 }", async () => {
@@ -117,7 +115,7 @@ describe("bitum/classifier", () => {
 
   it("all_prices: sheetName='исходник' + правильный A1 → confidence 0.85", async () => {
     const buf = await bufferFromSheet((ws) => {
-      ws.getCell("A1").value = "Цены на битум все, руб/тонн";
+      ws.getCell("A1").value = "Цены битум все, руб/тонн";
     }, "исходник");
     const r = await classifyFile(buf);
     expect(r.type).toBe("all_prices");
