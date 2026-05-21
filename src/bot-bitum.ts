@@ -96,12 +96,12 @@ export function _resetPendingStateForTests(): void {
 // =============================================================================
 
 const LEARNING_KEYBOARD: TgInlineKeyboardButton[][] = [
-  [{ text: "birzha_prices", callback_data: "bs:birzha_prices" }],
-  [{ text: "birzha_volumes", callback_data: "bs:birzha_volumes" }],
-  [{ text: "fca_sellers", callback_data: "bs:fca_sellers" }],
-  [{ text: "all_prices", callback_data: "bs:all_prices" }],
-  [{ text: "bitum_price_new", callback_data: "bs:bitum_price_new" }],
-  [{ text: "❌ не битум", callback_data: "bs:not_bitum" }],
+  [{ text: "📈 Биржа — цены (руб/т)", callback_data: "bs:birzha_prices" }],
+  [{ text: "📊 Биржа — объёмы (тыс. т)", callback_data: "bs:birzha_volumes" }],
+  [{ text: "🏭 FCA — цены продавцов", callback_data: "bs:fca_sellers" }],
+  [{ text: "📋 Все цены (свод)", callback_data: "bs:all_prices" }],
+  [{ text: "📸 БНД/ПБВ snapshot", callback_data: "bs:bitum_price_new" }],
+  [{ text: "❌ Не битумный файл", callback_data: "bs:not_bitum" }],
 ];
 
 // =============================================================================
