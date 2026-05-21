@@ -1,37 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v4.0
-milestone_name: milestone
-status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-05-19T11:31:37.377Z"
-last_activity: 2026-05-19
+milestone: v5.0
+milestone_name: bitum-weekly-report
+status: defining_requirements
+stopped_at: milestone v5.0 started — REQUIREMENTS.md pending
+last_updated: "2026-05-21T00:00:00.000Z"
+last_activity: 2026-05-21
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # State: tg-parser-demo
 
-**Last updated:** 2026-05-05 — Roadmap created for v4.0
+**Last updated:** 2026-05-21 — Milestone v5.0 «Битумный недельный отчёт» started
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (обновлён 2026-05-05)
+See: `.planning/PROJECT.md` (обновлён 2026-05-21)
 
 **Core Value:** В 20:00 MSK без вмешательства оператора получать в закрытом канале Заказчика структурированный дайджест нефтегаза за последние 24 часа, ранжированный по 5 направлениям и помеченный упоминаниями Роснефть/Лукойл/Газпром, в котором каждая цитата дословно присутствует в исходном посте — без галлюцинаций LLM, без повторов из вчерашних сводок, с полным архивом прогонов на ФС.
 
-**Current Focus:** Phase 03 — web-scraping
+**Current Focus:** Milestone v5.0 — Битумный недельный отчёт (xlsx classifier + 5 parsers + structured report по docs/bitum/algoritm.md + битум-команды бота)
 
 ## Current Position
 
-Phase: 03
-Plan: Not started
-Status: Executing Phase 03
-Last activity: 2026-05-20 - Completed quick task 260520-i5v: dashboard send доступен из run-once скриптов (buildAndSendDashboard helper)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-21 — Milestone v5.0 started, PROJECT.md updated, REQUIREMENTS.md pending
 
 Progress: [░░░░░░░░░░] 0%
 
