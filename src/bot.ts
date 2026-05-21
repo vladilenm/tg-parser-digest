@@ -416,6 +416,12 @@ export async function removeChannel(
 // =============================================================================
 
 /**
+ * BITUM-MIGRATE-02: одноразовое deprecation-сообщение per-user, per-process.
+ * Set ключуется по userId; рестарт бота → повторное предупреждение (acceptable).
+ */
+const deprecationShownByUser = new Set<number>();
+
+/**
  * Маршрутизирует команды от allowlist'а. Не-allowlist → silent ignore + log.info (D-07/D-08).
  * Поддерживает suffix `@botname` (`/channels@MyBot` → `/channels`).
  * Экспорт для unit-тестов (Plan 4).
@@ -538,13 +544,23 @@ export async function handleCommand(
     await handleBitumReset(token, msg);
     return;
   }
-  // Aliases — wave 6 добавит one-time deprecation msg (MIGRATE-02).
-  if (cmd === "/upload_status") {
-    await handleBitumStatus(token, msg);
-    return;
-  }
-  if (cmd === "/summarize") {
-    await handleBitumPreview(token, msg);
+  // BITUM-MIGRATE-02: legacy aliases с одноразовым deprecation-сообщением.
+  if (cmd === "/upload_status" || cmd === "/summarize") {
+    const newCmd =
+      cmd === "/summarize" ? "/bitum_preview" : "/bitum_status";
+    if (!deprecationShownByUser.has(userId)) {
+      deprecationShownByUser.add(userId);
+      await sendPlain(
+        token,
+        msg.chat.id,
+        `⚠️ Команда ${cmd} переименована в ${newCmd}. В v6.0 будет удалена.`,
+      );
+    }
+    if (cmd === "/summarize") {
+      await handleBitumPreview(token, msg);
+    } else {
+      await handleBitumStatus(token, msg);
+    }
     return;
   }
   if (cmd === "/start") {
