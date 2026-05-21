@@ -26,20 +26,20 @@ import type { ParsedRow, UploadType } from "./upload/types.js";
 // Telegram API минимальные типы — чтобы избежать `any` в polling/handlers.
 // =============================================================================
 
-interface TgUser {
+export interface TgUser {
   id: number;
 }
-interface TgChat {
+export interface TgChat {
   id: number;
 }
-interface TgDocument {
+export interface TgDocument {
   file_id: string;
   file_unique_id?: string;
   file_name?: string;
   file_size?: number;
   mime_type?: string;
 }
-interface TgMessage {
+export interface TgMessage {
   message_id: number;
   from?: TgUser;
   chat: TgChat;
@@ -51,7 +51,7 @@ interface TgFile {
   file_path?: string;
   file_size?: number;
 }
-interface TgCallbackQuery {
+export interface TgCallbackQuery {
   id: string;
   from: TgUser;
   message?: TgMessage;
@@ -67,7 +67,7 @@ interface TgGetUpdatesResponse {
   result: TgUpdate[];
   description?: string;
 }
-interface TgInlineKeyboardButton {
+export interface TgInlineKeyboardButton {
   text: string;
   callback_data: string;
 }
@@ -156,7 +156,7 @@ export function normalizeUsername(raw: string): string | null {
  * Обёртка над fetch к Bot API. На !res.ok — throw c HTTP-кодом и телом ответа.
  * Паттерн скопирован из src/deliver.ts:72-81.
  */
-async function tgFetch<T>(
+export async function tgFetch<T>(
   token: string,
   method: string,
   body: unknown
@@ -179,7 +179,7 @@ async function tgFetch<T>(
  * D-09/D-10: ответ на команду — sendMessage в тот же chat,
  * с reply_to_message_id, plain-text без HTML/Markdown форматирования.
  */
-async function sendReply(
+export async function sendReply(
   token: string,
   chatId: number,
   replyToMessageId: number,
@@ -200,7 +200,7 @@ async function sendReply(
  * /remove_channel — две кнопки confirm/cancel.
  * Plain-text без HTML/Markdown форматирования (D-10), reply_to_message_id (D-09).
  */
-async function sendReplyWithKeyboard(
+export async function sendReplyWithKeyboard(
   token: string,
   chatId: number,
   replyToMessageId: number,
@@ -220,7 +220,7 @@ async function sendReplyWithKeyboard(
  * Шлёт plain-text сообщение в чат БЕЗ reply_to (для прогресс-индикаторов и финального
  * отчёта в DM, где «свежий» thread читабельнее, чем replies-кружочки).
  */
-async function sendPlain(
+export async function sendPlain(
   token: string,
   chatId: number,
   text: string
@@ -261,7 +261,7 @@ async function sendMarkdown(
  * Если LLM сгенерит запрещённый тег — Bot API ответит 400 "can't parse entities"
  * и tgFetch бросит, что поймает try/catch в handleSummarizeCommand.
  */
-async function sendHtml(
+export async function sendHtml(
   token: string,
   chatId: number,
   text: string
@@ -294,7 +294,7 @@ function currentMskWeek(): string {
  * Скачивает файл по file_id через Bot API: getFile → file_path → fetch.
  * Возвращает Buffer + предложенное имя (из document.file_name или file_path basename).
  */
-async function downloadTgFile(
+export async function downloadTgFile(
   token: string,
   fileId: string,
   fallbackName: string
