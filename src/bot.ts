@@ -1,18 +1,8 @@
 // src/bot.ts — Telegram bot polling + commands handler.
 // Использует тот же TG_BOT_TOKEN, что и delivery (D-01). CRUD-обёртки рядом с handler'ами (D-16).
 
-import path from "node:path";
 import { mutate, loadChannels, type ChannelEntry } from "./channels-store.js";
 import { log } from "./logger.js";
-import {
-  handleBitumStatus,
-  handleBitumPreview,
-  handleBitumReport,
-  handleBitumReset,
-  handleBitumDocument,
-  handleBitumCallback,
-} from "./bot-bitum.js";
-import { isoWeekFolder } from "./bitum/storage.js";
 
 // =============================================================================
 // Telegram API минимальные типы — чтобы избежать `any` в polling/handlers.
@@ -63,9 +53,6 @@ export interface TgInlineKeyboardButton {
   text: string;
   callback_data: string;
 }
-interface TgReplyMarkup {
-  inline_keyboard: TgInlineKeyboardButton[][];
-}
 
 // BOT-UI-01 / D-01 / D-05: reply-keyboard 2×2 под полем ввода.
 // Текст кнопки = текст сообщения, который юзер шлёт боту (Telegram эмулирует input);
@@ -81,13 +68,10 @@ interface TgReplyKeyboardMarkup {
 }
 
 // BOT-UI-01 / D-05: единая 2×2 нижняя клавиатура. Прикладывается ко всем
-// исходящим сообщениям бот→пользователь, КРОМЕ sendReplyWithKeyboard (inline
-// confirm/cancel для /remove_channel — одновременно reply+inline нельзя:
-// Telegram примет inline и проигнорирует reply, при этом нижняя клавиатура
-// у юзера может временно «исчезнуть» — вернётся со следующим sendMessage).
+// исходящим сообщениям бот→пользователь.
 const MAIN_KEYBOARD: TgReplyKeyboardMarkup = {
   keyboard: [
-    [{ text: "📊 Статус загрузок" }, { text: "🧠 Сделать сводку" }],
+    [{ text: "📊 Статус загрузок" }, { text: "🧠 Отчёт битум" }],
     [{ text: "📋 Каналы новостей" }, { text: "❓ Помощь" }],
   ],
   resize_keyboard: true,
@@ -114,10 +98,6 @@ let pollingActive = false;
 /**
  * Парсит BOT_ALLOWED_USER_IDS (comma-separated numeric) в Set<number>.
  * Пустые/нечисловые/неположительные токены отбрасываются.
- * WR-01: строгий regex — только positive integer без префикса/суффикса
- * (Number.parseInt("12345abc") даёт 12345 и тихо расширяет allowlist на ошибочное число;
- * для security-чувствительной env-переменной это потенциально опасно).
- * Экспорт для unit-тестов (Plan 4).
  */
 export function parseAllowlist(envValue: string | undefined): Set<number> {
   if (!envValue) return new Set();
@@ -133,9 +113,6 @@ export function parseAllowlist(envValue: string | undefined): Set<number> {
 
 /**
  * Strip leading `@`, валидация по USERNAME_REGEX.
- * Регистр НЕ меняем (Telegram username case-insensitive, но храним как ввели).
- * Возвращает username без `@` или null если не валиден.
- * Экспорт для unit-тестов (Plan 4).
  */
 export function normalizeUsername(raw: string): string | null {
   const trimmed = raw.trim();
@@ -146,7 +123,6 @@ export function normalizeUsername(raw: string): string | null {
 
 /**
  * Обёртка над fetch к Bot API. На !res.ok — throw c HTTP-кодом и телом ответа.
- * Паттерн скопирован из src/deliver.ts:72-81.
  */
 export async function tgFetch<T>(
   token: string,
@@ -182,7 +158,6 @@ export async function sendReply(
     reply_to_message_id: replyToMessageId,
     text,
     disable_web_page_preview: true,
-    // BOT-UI-01 / D-05: каждый ответ бота включает нижнюю клавиатуру 2×2.
     reply_markup: MAIN_KEYBOARD,
   });
 }
@@ -190,7 +165,6 @@ export async function sendReply(
 /**
  * Вариант sendReply с inline-keyboard (D-11/D-13). Используется для подтверждения
  * /remove_channel — две кнопки confirm/cancel.
- * Plain-text без HTML/Markdown форматирования (D-10), reply_to_message_id (D-09).
  */
 export async function sendReplyWithKeyboard(
   token: string,
@@ -209,8 +183,7 @@ export async function sendReplyWithKeyboard(
 }
 
 /**
- * Шлёт plain-text сообщение в чат БЕЗ reply_to (для прогресс-индикаторов и финального
- * отчёта в DM, где «свежий» thread читабельнее, чем replies-кружочки).
+ * Шлёт plain-text сообщение в чат БЕЗ reply_to.
  */
 export async function sendPlain(
   token: string,
@@ -221,37 +194,13 @@ export async function sendPlain(
     chat_id: chatId,
     text,
     disable_web_page_preview: true,
-    // BOT-UI-01 / D-05: прогресс-уведомления и финальный отчёт тоже несут клавиатуру.
     reply_markup: MAIN_KEYBOARD,
   });
 }
 
 /**
- * Шлёт Markdown-сообщение (parse_mode: "Markdown") — используется для финального
- * отчёта upload-pipeline. Markdown V1 (не V2) — меньше escape-боли.
- */
-async function sendMarkdown(
-  token: string,
-  chatId: number,
-  text: string
-): Promise<void> {
-  await tgFetch<{ ok: boolean }>(token, "sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "Markdown",
-    disable_web_page_preview: true,
-    // BOT-UI-01 / D-05: финальный markdown-отчёт upload-pipeline / LLM narrative
-    // тоже несут клавиатуру.
-    reply_markup: MAIN_KEYBOARD,
-  });
-}
-
-/**
- * Шлёт HTML-сообщение (parse_mode: "HTML") — используется для LLM-narrative
- * /summarize (quick-260519-tbo). Telegram HTML whitelist: <b>, <i>, <u>, <s>,
+ * Шлёт HTML-сообщение (parse_mode: "HTML"). Whitelist: <b>, <i>, <u>, <s>,
  * <code>, <pre>, <a>, <blockquote>, <tg-spoiler>. Без <h1>/<hr>/<br>.
- * Если LLM сгенерит запрещённый тег — Bot API ответит 400 "can't parse entities"
- * и tgFetch бросит, что поймает try/catch в handleSummarizeCommand.
  */
 export async function sendHtml(
   token: string,
@@ -268,23 +217,12 @@ export async function sendHtml(
 }
 
 // =============================================================================
-// Upload pipeline helpers (Plan quick-260519-l11).
+// Telegram file download helper.
 // =============================================================================
 
 /**
- * Текущая неделя в часовом поясе MSK (UTC+3).
- * Используется только для команды /upload_status — для save-операций мы берём
- * неделю из latest-date файла, а не из «сейчас».
- */
-function currentMskWeek(): string {
-  const nowUtc = Date.now();
-  const mskDate = new Date(nowUtc + 3 * 3600 * 1000);
-  return isoWeekFolder(mskDate);
-}
-
-/**
  * Скачивает файл по file_id через Bot API: getFile → file_path → fetch.
- * Возвращает Buffer + предложенное имя (из document.file_name или file_path basename).
+ * Возвращает Buffer + предложенное имя.
  */
 export async function downloadTgFile(
   token: string,
@@ -310,65 +248,16 @@ export async function downloadTgFile(
   const arr = await res.arrayBuffer();
   return {
     buffer: Buffer.from(arr),
-    fileName: fallbackName || path.basename(filePath),
+    fileName: fallbackName,
   };
 }
 
-/**
- * Обрабатывает document-сообщение от allowlist-юзера: detect → save →
- * (если пара prices+fca собрана) → analyze → send Markdown.
- *
- * Не-allowlist → silent ignore (как handleCommand).
- * Любые throw из pipeline ловятся локальным try/catch и репортятся юзеру коротким текстом.
- */
-export async function handleDocument(
-  token: string,
-  msg: TgMessage,
-  allowlist: Set<number>
-): Promise<void> {
-  const userId = msg.from?.id;
-  const doc = msg.document;
-  if (!userId || !doc) return;
-
-  if (!allowlist.has(userId)) {
-    log.info(`[bot] denied: from=${userId} cmd=document`);
-    return;
-  }
-
-  const chatId = msg.chat.id;
-  try {
-    await sendPlain(token, chatId, "⏳ Сохраняю файл…");
-    const { buffer, fileName } = await downloadTgFile(
-      token,
-      doc.file_id,
-      doc.file_name ?? "upload.xlsx"
-    );
-    log.info(
-      `[bot] document received: from=${userId} name=${fileName} size=${buffer.length}`
-    );
-    // Phase 4 / wave 5: dispatch ALL xlsx through bitum pipeline (classify by content).
-    await handleBitumDocument(token, msg, buffer, fileName);
-  } catch (err) {
-    const msgText = (err as Error).message ?? String(err);
-    log.error(`[bot] handleDocument error: ${msgText}`);
-    try {
-      await sendPlain(token, chatId, `⚠️ Ошибка: ${msgText.slice(0, 300)}`);
-    } catch {
-      // Если даже плейн сообщение не уходит — pollOnce поймает в outer try/catch.
-    }
-  }
-}
-
 // =============================================================================
-// /summarize and /upload_status handled by handleBitumPreview / handleBitumStatus
-// (Phase 4 wave 5 routing in handleCommand below). Legacy handler removed.
-// =============================================================================
-// CRUD-обёртки (D-16): живут рядом с handler'ами, используют mutate() из Phase 1.
+// CRUD-обёртки (D-16): живут рядом с handler'ами.
 // =============================================================================
 
 /**
  * Возвращает текстовое представление текущего списка каналов.
- * BOT-01.
  */
 export function listChannels(): string {
   const channels = loadChannels();
@@ -377,10 +266,6 @@ export function listChannels(): string {
   return `Каналов: ${channels.length}\n` + lines.join("\n");
 }
 
-/**
- * Идемпотентное добавление канала. Возвращает "added" / "exists".
- * BOT-02.
- */
 export async function addChannel(
   username: string
 ): Promise<"added" | "exists"> {
@@ -395,10 +280,6 @@ export async function addChannel(
   return result;
 }
 
-/**
- * Идемпотентное удаление канала. Возвращает "removed" / "missing".
- * BOT-03 (handler сам вызывается из Plan 2).
- */
 export async function removeChannel(
   username: string
 ): Promise<"removed" | "missing"> {
@@ -412,19 +293,36 @@ export async function removeChannel(
 }
 
 // =============================================================================
+// Document handler — bitum-wiring (Task 10 будет финализировать).
+// Между Task 1 и Task 10 handleDocument временно отвечает «not implemented».
+// =============================================================================
+
+export async function handleDocument(
+  token: string,
+  msg: TgMessage,
+  allowlist: Set<number>
+): Promise<void> {
+  const userId = msg.from?.id;
+  const doc = msg.document;
+  if (!userId || !doc) return;
+  if (!allowlist.has(userId)) {
+    log.info(`[bot] denied: from=${userId} cmd=document`);
+    return;
+  }
+  // Placeholder до Task 10 — bitum-wiring добавит реальный bridge в handleBitumDocument.
+  await sendPlain(
+    token,
+    msg.chat.id,
+    "⚠️ Битум-пайплайн в процессе настройки. Попробуйте позже."
+  );
+}
+
+// =============================================================================
 // Command router.
 // =============================================================================
 
 /**
- * BITUM-MIGRATE-02: одноразовое deprecation-сообщение per-user, per-process.
- * Set ключуется по userId; рестарт бота → повторное предупреждение (acceptable).
- */
-const deprecationShownByUser = new Set<number>();
-
-/**
- * Маршрутизирует команды от allowlist'а. Не-allowlist → silent ignore + log.info (D-07/D-08).
- * Поддерживает suffix `@botname` (`/channels@MyBot` → `/channels`).
- * Экспорт для unit-тестов (Plan 4).
+ * Маршрутизирует команды от allowlist'а. Не-allowlist → silent ignore + log.info.
  */
 export async function handleCommand(
   token: string,
@@ -433,24 +331,19 @@ export async function handleCommand(
 ): Promise<void> {
   const userId = msg.from?.id;
   const rawText = msg.text?.trim() ?? "";
-  // BOT-UI-05 / D-01: reply-клавиатура шлёт текст кнопки как обычное сообщение
-  // от юзера; нормализуем до /command, чтобы дальше handler работал унифицированно.
-  // Иначе firstWord = "📊", cmd = "📊" — не команда и тихо игнорилось бы.
   const EMOJI_BUTTON_MAP: Record<string, string> = {
     "📊 Статус загрузок": "/bitum_status",
-    "🧠 Сделать сводку": "/bitum_preview",
+    "🧠 Отчёт битум": "/bitum_report",
     "📋 Каналы новостей": "/channels",
     "❓ Помощь": "/help",
   };
   const text = EMOJI_BUTTON_MAP[rawText] ?? rawText;
   if (!userId || !text.startsWith("/")) return;
 
-  // Извлекаем команду (до пробела или конца) с учётом suffix'а @botname.
   const firstWord = text.split(/\s+/)[0];
   const cmd = firstWord.split("@")[0]; // "/channels@MyBot" → "/channels"
 
   if (!allowlist.has(userId)) {
-    // D-08: info-level, формат `[bot] denied: from=%d cmd=%s`.
     log.info(`[bot] denied: from=${userId} cmd=${cmd}`);
     return;
   }
@@ -510,8 +403,6 @@ export async function handleCommand(
       );
       return;
     }
-    // D-11: callback_data самодостаточный — username внутри. Лимит 64 байта,
-    // username ≤32 символов → влезает с большим запасом.
     const keyboard: TgInlineKeyboardButton[][] = [
       [
         { text: "Удалить", callback_data: `rm:${u}:confirm` },
@@ -527,63 +418,19 @@ export async function handleCommand(
     );
     return;
   }
-  // Phase 4 wave 5: 4 битум-команды (BITUM-TG-01..04) + legacy aliases.
-  if (cmd === "/bitum_status") {
-    await handleBitumStatus(token, msg);
-    return;
-  }
-  if (cmd === "/bitum_preview") {
-    await handleBitumPreview(token, msg);
-    return;
-  }
-  if (cmd === "/bitum_report") {
-    await handleBitumReport(token, msg);
-    return;
-  }
-  if (cmd === "/bitum_reset") {
-    await handleBitumReset(token, msg);
-    return;
-  }
-  // BITUM-MIGRATE-02: legacy aliases с одноразовым deprecation-сообщением.
-  if (cmd === "/upload_status" || cmd === "/summarize") {
-    const newCmd =
-      cmd === "/summarize" ? "/bitum_preview" : "/bitum_status";
-    if (!deprecationShownByUser.has(userId)) {
-      deprecationShownByUser.add(userId);
-      await sendPlain(
-        token,
-        msg.chat.id,
-        `⚠️ Команда ${cmd} переименована в ${newCmd}. В v6.0 будет удалена.`,
-      );
-    }
-    if (cmd === "/summarize") {
-      await handleBitumPreview(token, msg);
-    } else {
-      await handleBitumStatus(token, msg);
-    }
-    return;
-  }
   if (cmd === "/start") {
-    // BOT-UI-03: приветствие + reply-клавиатура (MAIN_KEYBOARD приклеит sendReply).
     await sendReply(
       token,
       msg.chat.id,
       msg.message_id,
-      "Привет! Я бот-помощник по битуму. Доступные действия — на клавиатуре ниже или через меню / слева от поля ввода."
+      "Привет! Я бот-помощник. Доступные действия — на клавиатуре ниже или через меню / слева от поля ввода."
     );
     return;
   }
   if (cmd === "/help") {
-    // BOT-UI-04: инструкция (xlsx upload + основные команды).
     const helpText = [
-      "Как пользоваться:",
-      "",
-      "1. Пришлите xlsx-файл (биржа / биржа-объёмы / FCA) — бот распознает тип по A1 и сохранит в data/uploads/YYYY-WW.",
-      "2. После загрузки пары (биржа + FCA) — нажмите «🧠 Сделать сводку» (или /summarize) для LLM-обзора.",
-      "3. «📊 Статус загрузок» (/upload_status) — что лежит в текущей неделе.",
-      "4. «📋 Каналы новостей» (/channels) — управление списком каналов для ежедневного дайджеста (отдельный пайплайн).",
-      "",
-      "Дополнительно: /add_channel @name, /remove_channel @name.",
+      "Доступные команды:",
+      "  /channels, /add_channel @name, /remove_channel @name",
     ].join("\n");
     await sendReply(token, msg.chat.id, msg.message_id, helpText);
     return;
@@ -592,14 +439,9 @@ export async function handleCommand(
 }
 
 // =============================================================================
-// Callback query handler (D-11/D-12/D-13/D-14): /remove_channel confirmation flow.
+// Callback query handler: /remove_channel confirmation flow.
 // =============================================================================
 
-/**
- * Парсит callback_data формата `rm:<username>:confirm` или `rm:<username>:cancel` (D-11).
- * Возвращает { username, action } или null если формат невалиден.
- * Экспорт для unit-тестов (Plan 4).
- */
 export function parseRemoveCallbackData(
   data: string
 ): { username: string; action: "confirm" | "cancel" } | null {
@@ -611,17 +453,6 @@ export function parseRemoveCallbackData(
   return { username, action };
 }
 
-/**
- * Обработчик callback_query от inline-кнопок /remove_channel.
- * D-12: любой allowlist-юзер (не только инициатор) может нажать.
- * D-07/D-08: не-allowlist → silent ignore (без answerCallbackQuery!) + log.info.
- * D-13: editMessageReplyMarkup (убираем кнопки) + editMessageText (новый текст).
- * D-14: removeChannel идемпотентен — повторный confirm после первого даёт "missing".
- * W-3: каждый editMessage* в свой try/catch — Telegram возвращает 400 если "message
- * is not modified" / message удалён юзером, эти ошибки не должны валить handler.
- *
- * Экспорт для unit-тестов (Plan 4).
- */
 export async function handleCallbackQuery(
   token: string,
   cb: TgCallbackQuery,
@@ -630,25 +461,13 @@ export async function handleCallbackQuery(
   const userId = cb.from.id;
   const data = cb.data ?? "";
 
-  // D-07/D-08/D-12: не-allowlist пользователь — silent ignore.
-  // ВАЖНО: НЕ вызываем answerCallbackQuery — иначе клиент получит ack и поймёт,
-  // что бот его «увидел». Silent ignore = клиент видит вечный "loading" 15 минут,
-  // потом Telegram сам очищает callback. Это и есть желаемое поведение.
   if (!allowlist.has(userId)) {
     log.info(`[bot] denied: from=${userId} cmd=callback:${data}`);
     return;
   }
 
-  // Phase 4 wave 5: битум-callbacks routed first (prefixes: bs: / bp: / br:).
-  if (/^(bs|bp|br):/.test(data)) {
-    const handled = await handleBitumCallback(token, cb);
-    if (handled) return;
-  }
-
   const parsed = parseRemoveCallbackData(data);
   if (!parsed || !cb.message) {
-    // Неизвестный формат или отсутствует message (например, inline-mode) —
-    // отвечаем нейтральным answerCallbackQuery без действий (graceful).
     await tgFetch<{ ok: boolean }>(token, "answerCallbackQuery", {
       callback_query_id: cb.id,
     });
@@ -659,11 +478,6 @@ export async function handleCallbackQuery(
   const chatId = cb.message.chat.id;
   const messageId = cb.message.message_id;
 
-  // ack callback (обязательно в течение 15 мин — иначе клиент покажет loading).
-  // WR-02: ack лучший-effort, его сетевая ошибка не должна срывать removeChannel
-  // ниже. Если сеть нестабильна и ack падает — продолжаем основное действие,
-  // иначе пользователь нажимает кнопку, видит, что ничего не произошло, и кнопки
-  // остаются — повторное нажатие приводит к тому же результату при flaky-сети.
   try {
     await tgFetch<{ ok: boolean }>(token, "answerCallbackQuery", {
       callback_query_id: cb.id,
@@ -672,14 +486,12 @@ export async function handleCallbackQuery(
     log.warn(
       `[bot] answerCallbackQuery failed: ${(err as Error).message}`
     );
-    // продолжаем — ack лучший-effort, основная операция (mutate + edit) ниже.
   }
 
   let newText: string;
   if (action === "cancel") {
     newText = `Отмена удаления @${username}.`;
   } else {
-    // confirm — D-14: idempotent.
     const status = await removeChannel(username);
     newText =
       status === "removed"
@@ -687,9 +499,6 @@ export async function handleCallbackQuery(
         : `@${username} не найден в списке (возможно, уже удалён).`;
   }
 
-  // D-13: сначала убираем кнопки, потом обновляем текст. Если editMessageText
-  // упадёт — кнопки всё равно убраны и пользователь не нажмёт повторно.
-  // W-3: каждый editMessage* в свой try/catch.
   try {
     await tgFetch<{ ok: boolean }>(token, "editMessageReplyMarkup", {
       chat_id: chatId,
@@ -734,7 +543,6 @@ async function pollOnce(
     return;
   }
   for (const upd of resp.result) {
-    // W-1: сдвигаем offset на update_id + 1 — иначе тот же update прилетит снова.
     lastOffset = Math.max(lastOffset, upd.update_id + 1);
     try {
       if (upd.message) {
@@ -752,26 +560,10 @@ async function pollOnce(
   }
 }
 
-/**
- * BOT-UI-02 / D-02 / D-06: при старте регистрируем 7 команд для меню Telegram
- * (иконка слева от поля ввода в DM боту). Вызывается ОДИН раз при старте бота.
- *
- * На любую ошибку — warn, НЕ падать (D-06): меню некритично для работы;
- * pollLoop стартует независимо. Паттерн try/catch+warn симметричен deleteWebhook.
- */
 async function registerBotCommands(token: string): Promise<void> {
   const commands = [
     { command: "start", description: "Запустить бота / показать меню" },
     { command: "help", description: "Инструкция" },
-    // Битум-команды (Phase 4 milestone v5.0). /summarize и /upload_status
-    // остаются как deprecated алиасы handler-уровня, но НЕ в меню.
-    { command: "bitum_status", description: "Чек-лист битум-недели (5 типов)" },
-    { command: "bitum_preview", description: "Превью битум-отчёта в DM" },
-    {
-      command: "bitum_report",
-      description: "Битум-отчёт с публикацией в канал",
-    },
-    { command: "bitum_reset", description: "Сбросить текущую битум-неделю" },
     { command: "channels", description: "Список каналов" },
     { command: "add_channel", description: "Добавить канал" },
     { command: "remove_channel", description: "Удалить канал" },
@@ -788,8 +580,6 @@ async function pollLoop(
   token: string,
   allowlist: Set<number>
 ): Promise<void> {
-  // D-03: deleteWebhook ОБЯЗАТЕЛЕН до первого getUpdates.
-  // drop_pending_updates: false — сохраняем очередь команд за время рестарта.
   try {
     await tgFetch<{ ok: boolean }>(token, "deleteWebhook", {
       drop_pending_updates: false,
@@ -797,21 +587,17 @@ async function pollLoop(
     log.info("[bot] deleteWebhook ok (drop_pending_updates=false)");
   } catch (err) {
     log.error(`[bot] deleteWebhook failed: ${(err as Error).message}`);
-    // Продолжаем — getUpdates даст 409 если webhook остался, поймаем в catch ниже.
   }
 
-  // BOT-UI-02 / D-02: регистрируем команды для меню Telegram. Не блокирует
-  // polling — внутри try/catch с warn (D-06).
   await registerBotCommands(token);
 
-  // Exp.backoff: 1000/2000/4000ms (паттерн из telegram.ts reconnect).
   const backoffMs = [1000, 2000, 4000];
   let backoffIdx = 0;
 
   while (!stopRequested) {
     try {
       await pollOnce(token, allowlist);
-      backoffIdx = 0; // успех — сброс backoff'а
+      backoffIdx = 0;
     } catch (err) {
       const delay = backoffMs[Math.min(backoffIdx, backoffMs.length - 1)];
       log.error(
@@ -827,17 +613,9 @@ async function pollLoop(
 // Public lifecycle.
 // =============================================================================
 
-/**
- * Запуск polling-loop'а. Если TG_BOT_TOKEN или BOT_ALLOWED_USER_IDS не задан —
- * warn + return (D-04). Контракт со стороны run.ts (Plan 3): startBot НЕ throw'ает
- * наверх — внутренний try/catch логирует финальный crash. Resilience обеспечивается
- * exp.backoff внутри pollLoop. Run.ts вызывает startBot() как fire-and-forget
- * с outer try/catch только для финального alert (без restart-loop'а).
- */
 export async function startBot(): Promise<void> {
   const token = process.env.TG_BOT_TOKEN;
   const allowlistRaw = process.env.BOT_ALLOWED_USER_IDS;
-  // D-04: симметрично src/alert.ts:23-32 — нет env → warn + return, daemon живёт.
   if (!token || !allowlistRaw) {
     log.warn(
       "[bot] TG_BOT_TOKEN или BOT_ALLOWED_USER_IDS не задан — bot polling выключен"
@@ -864,20 +642,10 @@ export async function startBot(): Promise<void> {
   }
 }
 
-/**
- * Сигнал остановки polling-loop'а. Текущий getUpdates завершится максимум через
- * POLL_TIMEOUT_SEC секунд (long-polling возвращает результаты раньше при наличии
- * updates). После выхода из pollLoop pollingActive=false, что shutdown() в run.ts
- * может опросить через isBotPolling().
- */
 export function stopBot(): void {
   stopRequested = true;
 }
 
-/**
- * Возвращает текущее состояние polling-loop'а. Используется shutdown() в run.ts
- * для ожидания graceful завершения.
- */
 export function isBotPolling(): boolean {
   return pollingActive;
 }

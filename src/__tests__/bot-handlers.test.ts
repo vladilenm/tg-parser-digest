@@ -25,35 +25,8 @@ vi.mock("../channels-store.js", () => ({
   saveChannels: vi.fn(),
 }));
 
-// Изолируем bot-handlers от реального data/uploads/ — иначе findLatestWeekWithUploads
-// найдёт настоящие dev-загрузки и /bitum_preview пойдёт по happy-path вместо empty-week.
-// Phase 4 wave 5: bitum/storage заменил upload/storage; mock'аем оба для надёжности.
-vi.mock("../upload/storage.js", () => ({
-  findLatestWeekWithUploads: vi.fn(() => null),
-  listWeek: vi.fn(() => ({ hasPrices: false, hasFca: false, hasVolumes: false, lastRunAt: null })),
-  isoWeekFolder: vi.fn(() => "2026-W21"),
-  saveUpload: vi.fn(),
-  writeLastRun: vi.fn(),
-}));
-vi.mock("../bitum/storage.js", () => ({
-  findLatestWeekWithUploads: vi.fn(() => null),
-  listWeekV5: vi.fn(() => ({
-    week: "2026-W21",
-    hasBirzhaPrices: false,
-    hasBirzhaVolumes: false,
-    hasFcaSellers: false,
-    hasAllPrices: false,
-    hasBitumPriceNew: false,
-    lastRunAt: null,
-    allPresent: false,
-    presentCount: 0,
-  })),
-  isoWeekFolder: vi.fn(() => "2026-W21"),
-  saveUpload: vi.fn(),
-  writeLastRun: vi.fn(),
-  weekDir: vi.fn((w: string) => `/tmp/${w}`),
-  resetWeek: vi.fn(() => []),
-}));
+// Phase 4 v5.1: bitum/storage и upload/storage удалены целиком; bot.ts больше
+// их не импортирует. Этим тестам они не нужны.
 
 const mockedLoadChannels = vi.mocked(loadChannels);
 const mockedMutate = vi.mocked(mutate);
@@ -407,7 +380,7 @@ describe("handleCommand /channels (BOT-01)", () => {
     expect(rm).toBeDefined();
     expect(rm.keyboard).toBeDefined();
     expect(rm.keyboard).toEqual([
-      [{ text: "📊 Статус загрузок" }, { text: "🧠 Сделать сводку" }],
+      [{ text: "📊 Статус загрузок" }, { text: "🧠 Отчёт битум" }],
       [{ text: "📋 Каналы новостей" }, { text: "❓ Помощь" }],
     ]);
     expect(rm.resize_keyboard).toBe(true);
@@ -607,7 +580,7 @@ describe("handleCommand /start (BOT-UI-03)", () => {
 // =============================================================================
 
 describe("handleCommand /help (BOT-UI-04)", () => {
-  it("/help → инструкция содержит ключевые слова (xlsx, /channels)", async () => {
+  it("/help → инструкция содержит /channels", async () => {
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -619,7 +592,6 @@ describe("handleCommand /help (BOT-UI-04)", () => {
     const calls = fetchCallsTo("sendMessage");
     expect(calls.length).toBe(1);
     const t = calls[0].text as string;
-    expect(t).toMatch(/xlsx/i);
     expect(t).toContain("/channels");
   });
 });
@@ -644,7 +616,7 @@ describe("handleCommand emoji-button mapping (BOT-UI-05)", () => {
     expect(calls[0].text).toContain("Каналов:");
   });
 
-  it("'❓ Помощь' маршрутизируется как /help (инструкция содержит xlsx)", async () => {
+  it("'❓ Помощь' маршрутизируется как /help (инструкция содержит /channels)", async () => {
     const allowlist = new Set([111]);
     const msg = {
       message_id: 1,
@@ -655,37 +627,10 @@ describe("handleCommand emoji-button mapping (BOT-UI-05)", () => {
     await handleCommand("token", msg, allowlist);
     const calls = fetchCallsTo("sendMessage");
     expect(calls.length).toBe(1);
-    expect(calls[0].text).toMatch(/xlsx/i);
+    expect(calls[0].text).toContain("/channels");
   });
 
-  it("'📊 Статус загрузок' маршрутизируется как /bitum_status (Phase 4)", async () => {
-    const allowlist = new Set([111]);
-    const msg = {
-      message_id: 1,
-      chat: { id: 555 },
-      from: { id: 111 },
-      text: "📊 Статус загрузок",
-    };
-    await handleCommand("token", msg, allowlist);
-    const calls = fetchCallsTo("sendMessage");
-    expect(calls.length).toBe(1);
-    expect(calls[0].text).toMatch(/Битум-неделя/);
-  });
-
-  it("'🧠 Сделать сводку' маршрутизируется как /bitum_preview (Phase 4)", async () => {
-    const allowlist = new Set([111]);
-    const msg = {
-      message_id: 1,
-      chat: { id: 555 },
-      from: { id: 111 },
-      text: "🧠 Сделать сводку",
-    };
-    await handleCommand("token", msg, allowlist);
-    const calls = fetchCallsTo("sendMessage");
-    // bitum_preview шлёт progress "📊 Готовлю превью отчёта…" + warning
-    const allTexts = calls.map((c) => c.text as string).join("\n");
-    expect(allTexts).toMatch(/файлов не загружено/i);
-  });
+  // Phase 4 v5.1: bitum-routing тесты удалены — bot-bitum переписывается с нуля в Task 9/10.
 
   it("обычное текстовое сообщение без / и без эмодзи-кнопки → ignored", async () => {
     const allowlist = new Set([111]);
