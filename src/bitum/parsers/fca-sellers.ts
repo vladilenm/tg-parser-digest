@@ -1,12 +1,12 @@
 // src/bitum/parsers/fca-sellers.ts — парсер «Битум таблица продавцы» (FCA).
-// algoritm.md §3 + rev.xlsx структура (verified 2026-05-22):
-//   Sheet "Chart data", rowCount=26, columnCount=5
-//   A1: "Битум цены продавцов FCA, руб./тонн"
-//   A3..E3: "Пункт отгрузки", "Регион", <date prev>, <date curr>, "Δ"
-//   A4..A26: refinery / seller, B — region, C — prev price, D — curr price, E — delta formula
-// Date: используем D3 (end of period) для всех строк.
-// pointOfShipment в rev-формате СОВПАДАЕТ с A-колонкой (нет отдельной колонки) —
-// используем A как и refinery, и pointOfShipment (упрощение rev).
+// Парсит ОРИГИНАЛЬНЫЙ файл (docs/examples/BITUM — таблица продавцы.xlsx).
+// Структура (verified 2026-05-22):
+//   row 1 = шапка: A="Дата", B="Регион", C="Пункт отгрузки", D="БНД"
+//   row 2..N = данные: A=дата (per-row), B=регион, C=НПЗ/продавец, D=цена в руб/т
+// В источнике НЕТ колонок prev/Δ. Парсер возвращает плоский snapshot per row.
+// Дельта считается на уровне analyzer'a: группировка по pointOfShipment,
+// ≥2 даты → priceFrom = первая, priceTo = последняя, deltaWeek = разница;
+// единичные продавцы пропускаются (см. analyzer.ts movementsFromFca).
 
 import { z } from "zod";
 import {
@@ -24,16 +24,11 @@ import type {
   ParserResult,
 } from "../types.js";
 
-// Default — нужно подтверждение оператора на execute-phase: координаты верифицированы
-// на rev-формате 2026-05-22 (см. dump в /tmp/dump-fca.mjs):
-const HEADER_ROW = 3;
-const COL_REFINERY = 1; // A
+const HEADER_ROW = 1;
+const COL_DATE = 1; // A
 const COL_REGION = 2; // B
-const COL_PRICE_PREV = 3; // C
-const COL_PRICE_CURR = 4; // D
-const COL_DELTA = 5; // E
-const DATE_CELL_ROW = 3;
-const DATE_CELL_COL = 4; // D3 — дата конца периода
+const COL_REFINERY = 3; // C (Пункт отгрузки)
+const COL_PRICE = 4; // D (БНД, руб/т)
 
 const RowSchema = z.object({
   date: z.string().min(8),
@@ -42,7 +37,7 @@ const RowSchema = z.object({
   region: z.string(),
   pointOfShipment: z.string(),
   priceRub: z.number().nonnegative(),
-  deltaWeek: z.number(),
+  deltaWeek: z.number(), // 0 в источнике; реальная Δ считается в analyzer
 });
 
 export async function parseFcaSellers(
@@ -69,36 +64,37 @@ export async function parseFcaSellers(
         },
       };
     }
-    // Extract end-of-period date from D3.
-    const dateIso =
-      excelDateToIso(sheet.getRow(DATE_CELL_ROW).getCell(DATE_CELL_COL).value) ??
-      new Date().toISOString().slice(0, 10);
     let lastDataRow = HEADER_ROW;
     for (let r = HEADER_ROW + 1; r <= rowCount; r++) {
       const dataRow = sheet.getRow(r);
+      const dateIso = excelDateToIso(dataRow.getCell(COL_DATE).value);
+      if (!dateIso) {
+        // Пустые строки пропускаем тихо; строки с данными без даты → error.
+        const hasAnyData =
+          cellString(dataRow.getCell(COL_REFINERY)) !== "" ||
+          cellNumber(dataRow.getCell(COL_PRICE)) !== null;
+        if (hasAnyData) {
+          errors.push({ rowNum: r, reason: "missing/invalid date in col A" });
+        }
+        continue;
+      }
       const refineryRaw = cellString(dataRow.getCell(COL_REFINERY));
       if (!refineryRaw) continue;
       const region = cellString(dataRow.getCell(COL_REGION));
-      const priceCurr = cellNumber(dataRow.getCell(COL_PRICE_CURR));
-      const pricePrev = cellNumber(dataRow.getCell(COL_PRICE_PREV));
-      if (priceCurr === null) {
-        errors.push({ rowNum: r, reason: "missing current price (col D)" });
+      const price = cellNumber(dataRow.getCell(COL_PRICE));
+      if (price === null) {
+        errors.push({ rowNum: r, reason: "missing price (col D)" });
         continue;
       }
-      let delta = cellNumber(dataRow.getCell(COL_DELTA));
-      if (delta === null && pricePrev !== null) {
-        delta = priceCurr - pricePrev;
-      }
-      if (delta === null) delta = 0;
       const norm = normalizeRefinery(refineryRaw, dict);
       const candidate: ParsedFcaRow = {
         date: dateIso,
         refineryCanonical: norm.canonical,
         refineryRaw,
         region,
-        pointOfShipment: refineryRaw, // rev-формат: pointOfShipment == refinery (A-колонка)
-        priceRub: priceCurr,
-        deltaWeek: delta,
+        pointOfShipment: refineryRaw,
+        priceRub: price,
+        deltaWeek: 0, // считается на уровне analyzer'a из группировки по pointOfShipment
       };
       const parsed = RowSchema.safeParse(candidate);
       if (!parsed.success) {
@@ -111,7 +107,7 @@ export async function parseFcaSellers(
       rows.push(parsed.data);
       lastDataRow = r;
     }
-    cellRange = `A${HEADER_ROW + 1}:E${lastDataRow}`;
+    cellRange = `A${HEADER_ROW + 1}:D${lastDataRow}`;
   } catch (err) {
     errors.push({ rowNum: 0, reason: (err as Error).message });
   }

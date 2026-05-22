@@ -1,9 +1,9 @@
 // src/bitum/parsers/birzha-prices.ts — парсер «Биржа цены NPZ».
-// algoritm.md §2 + rev.xlsx: row 3 — refinery names (B..M, после strip "БНД-"),
-// row 4..N — даты в A + цены в тыс.руб/т (×1000 → руб/т).
-// T-04-02: BITUM_MAX_ROWS cap.
-// Default — нужно подтверждение оператора на execute-phase:
-//   - priceRub = cellValue * 1000
+// Парсит ОРИГИНАЛЬНЫЙ файл (docs/examples/birzha — цены НПЗ.xlsx).
+// Структура (verified 2026-05-22):
+//   row 1 = шапка: A="Период", B..M = «БНД-<НПЗ>»
+//   row 2..N = данные: A = дата, B..M = цена в тыс.руб/т
+// priceRub = cellValue * 1000 (тыс.руб/т → руб/т).
 
 import { z } from "zod";
 import {
@@ -22,9 +22,7 @@ import type {
   ParserResult,
 } from "../types.js";
 
-// Default — нужно подтверждение оператора на execute-phase: rev-формат row 3 =
-// refinery names в B..M (12 НПЗ), col A = «Период»; row 4..N — данные.
-const HEADER_ROW = 3;
+const HEADER_ROW = 1;
 const FIRST_DATA_COL = 2; // B
 const LAST_DATA_COL = 20; // T (защитный потолок)
 
@@ -109,7 +107,7 @@ export async function parseBirzhaPrices(
         rows.push(parsed.data);
       }
     }
-    cellRange = `B${HEADER_ROW + 1}:T${lastDataRow}`;
+    cellRange = `B${HEADER_ROW + 1}:T${lastDataRow}`; // B2:T<lastDataRow>, оригинал HEADER_ROW=1
   } catch (err) {
     errors.push({ rowNum: 0, reason: (err as Error).message });
   }

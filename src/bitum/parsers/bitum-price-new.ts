@@ -66,12 +66,22 @@ function parseDelta(raw: string): number {
 }
 
 /**
- * Parse price string "31250" / "31,250" / 31250 → number.
+ * Parse price string "31250" / "31,250" (RU thousands separator) / "31250.5" / 31250 → number.
+ * Логика: запятая = тысячный разделитель если за ней идёт 3 цифры подряд И нет десятичной точки;
+ * иначе запятая = десятичный разделитель (RU локаль).
  */
 function parsePrice(raw: string): number | null {
   const s = raw.trim();
   if (!s) return null;
-  const cleaned = s.replace(/[\s ]/g, "").replace(",", ".");
+  // Уберём пробелы (включая non-breaking) — это всегда thousands separator.
+  let cleaned = s.replace(/[\s  ]/g, "");
+  // Если запятая+3 цифры и нет точки → thousands separator → drop запятую.
+  // Иначе запятая → десятичная точка.
+  if (/,\d{3}(?:\D|$)/.test(cleaned) && !cleaned.includes(".")) {
+    cleaned = cleaned.replace(/,/g, "");
+  } else {
+    cleaned = cleaned.replace(",", ".");
+  }
   const n = Number(cleaned);
   if (!Number.isFinite(n) || n <= 0) return null;
   return n;

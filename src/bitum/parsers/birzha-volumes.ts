@@ -1,8 +1,10 @@
 // src/bitum/parsers/birzha-volumes.ts — парсер «Биржа суточная по NPZ».
-// algoritm.md §1 + rev.xlsx структура: row 3 — refinery names (C..N), row 4..N — даты в A + объёмы.
-// T-04-02: BITUM_MAX_ROWS cap.
-// Default — нужно подтверждение оператора на execute-phase:
-//   - тыс.т → т множитель: volumeT = cellValue * 1000
+// Парсит ОРИГИНАЛЬНЫЙ файл (docs/examples/birzha — суточная по НПЗ.xlsx).
+// Структура (verified 2026-05-22 на оригинале):
+//   row 1 = шапка: A="Период", B="Объем тыс.тн." (TOTAL — пропустить),
+//                  C..N = НПЗ с префиксом «Объем, тыс. тонн: <НПЗ>»
+//   row 2..N = данные: A = дата, B = total per row (пропустить), C..N = объём per НПЗ в тыс.т
+// тыс.т → т множитель: volumeT = cellValue * 1000.
 
 import { z } from "zod";
 import {
@@ -20,12 +22,10 @@ import type {
   ParserResult,
 } from "../types.js";
 
-// Default — нужно подтверждение оператора на execute-phase (точные координаты по
-// rev-формату 2026-05-22): row 3 = refinery names, row 4..N = data, col A = date,
-// cols B..N = volumes (rev.xlsx нормализован под 12 НПЗ).
-const HEADER_ROW = 3;
-const FIRST_DATA_COL = 2; // B
-const LAST_DATA_COL = 20; // T (защитный потолок; rev уже урезан до N)
+const HEADER_ROW = 1;
+const FIRST_DATA_COL = 3; // C — col B = «Объем тыс.тн.» (total) пропускаем
+const LAST_DATA_COL = 20; // T (защитный потолок)
+const VOLUME_PREFIX = /^Объем,\s*тыс\.\s*тонн\s*:\s*/i;
 
 const RowSchema = z.object({
   date: z.string().min(8),
@@ -63,14 +63,16 @@ export async function parseBirzhaVolumes(
         },
       };
     }
-    // Read header row 3 — refinery names.
+    // Read header row 1 — refinery names с префиксом «Объем, тыс. тонн: ».
     const headerRow = sheet.getRow(HEADER_ROW);
     const refineryByCol: Record<number, string> = {};
     for (let c = FIRST_DATA_COL; c <= LAST_DATA_COL; c++) {
       const text = cellString(headerRow.getCell(c));
-      if (text) refineryByCol[c] = text;
+      if (!text) continue;
+      const stripped = text.replace(VOLUME_PREFIX, "").trim();
+      if (stripped) refineryByCol[c] = stripped;
     }
-    // Iterate data rows row 4..rowCount.
+    // Iterate data rows row 2..rowCount.
     let lastDataRow = HEADER_ROW;
     for (let r = HEADER_ROW + 1; r <= rowCount; r++) {
       const dataRow = sheet.getRow(r);
@@ -115,7 +117,7 @@ export async function parseBirzhaVolumes(
         rows.push(parsed.data);
       }
     }
-    cellRange = `B${HEADER_ROW + 1}:T${lastDataRow}`;
+    cellRange = `C${HEADER_ROW + 1}:T${lastDataRow}`;
   } catch (err) {
     errors.push({ rowNum: 0, reason: (err as Error).message });
   }
