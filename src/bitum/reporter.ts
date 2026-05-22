@@ -151,6 +151,19 @@ function buildBitumPriceMovementsBlock(
   );
 }
 
+/**
+ * Группирует child-блоки под единым channel-заголовком с визуальным разделителем.
+ * Если все child = null → возвращает null (не печатаем пустой канал).
+ */
+function buildChannelBlock(
+  title: string,
+  children: (string | null)[]
+): string | null {
+  const valid = children.filter((c): c is string => Boolean(c));
+  if (valid.length === 0) return null;
+  return [`━━━ <b>${escapeHtml(title)}</b> ━━━`, ...valid].join("\n\n");
+}
+
 function buildCrossCheckDeltaBlock(
   analysis: AnalysisResult
 ): string | null {
@@ -250,18 +263,30 @@ export function buildReport(
     });
   }
 
+  // Группировка по «каналам продаж» (по сообщению заказчика 2026-05-22):
+  // канал «Биржа» = объёмы + цены биржи; канал «Продавцы (FCA)» = только цены;
+  // «Битум прайс» — reference (сводная) + расхождения дельт.
+  const birzhaChannel = buildChannelBlock("Биржевой канал", [
+    buildVolumesBlock(analysis),
+    buildBirzhaMovementsBlock(analysis),
+  ]);
+  const fcaChannel = buildChannelBlock("Канал продавцов (FCA)", [
+    buildFcaMovementsBlock(analysis),
+  ]);
+  const referenceChannel = buildChannelBlock("Reference: «Битум прайс»", [
+    buildBitumPriceMovementsBlock(analysis),
+    buildCrossCheckDeltaBlock(analysis),
+  ]);
+
   const blocks: (string | null)[] = [
     buildPeriodHeader(analysis),
     buildManualNumbersBlock(manualNumbers),
     buildPartialRenderBlock(analysis),
-    buildVolumesBlock(analysis),
-    buildBirzhaMovementsBlock(analysis),
-    buildFcaMovementsBlock(analysis),
-    buildBitumPriceMovementsBlock(analysis),
-    buildCrossCheckDeltaBlock(analysis),
+    birzhaChannel,
+    fcaChannel,
+    referenceChannel,
     // Старый price-based cross-check (по ценам) больше не показываем —
-    // delta cross-check выше даёт более сфокусированную картину расхождений
-    // и именно то, что просил заказчик («сравнение нашей дельты с сводной»).
+    // delta cross-check выше (в reference) даёт более сфокусированную картину.
     // Данные остаются в AnalysisResult.crossCheck для возможного будущего использования.
     buildTraceFooter(analysis, traces),
   ];
