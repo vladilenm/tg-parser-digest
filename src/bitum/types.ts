@@ -112,6 +112,18 @@ export interface CrossCheckIssue {
   deltaPct: number; // абсолютный % расхождения
 }
 
+// Расхождение между нашей вычисленной Δ (last-first из birzha_prices)
+// и declared Δ из сводной (bitum_price_new.deltaWeek).
+export interface CrossCheckDeltaIssue {
+  refineryCanonical: string;
+  ourDelta: number; // birzha_prices: priceLast - priceFirst
+  declaredDelta: number; // bitum_price_new.deltaWeek
+  diff: number; // ourDelta - declaredDelta
+  ourPriceFrom: number;
+  ourPriceTo: number;
+  declaredPriceTo: number;
+}
+
 export interface VolumeAggregate {
   refineryCanonical: string;
   refineryRaw: string;
@@ -123,6 +135,7 @@ export interface AnalysisResult {
   volumes: { totalT: number; byRefinery: VolumeAggregate[] };
   movements: PriceMovement[]; // плоский список, sorted by |deltaAbs| desc (D-11 default)
   crossCheck: CrossCheckIssue[];
+  crossCheckDelta: CrossCheckDeltaIssue[]; // наша Δ vs declared Δ
   available: Record<BitumType, boolean>;
   thresholdPct: number; // из ENV BITUM_CROSS_CHECK_THRESHOLD
 }
