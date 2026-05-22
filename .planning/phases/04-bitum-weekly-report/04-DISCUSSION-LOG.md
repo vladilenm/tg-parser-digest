@@ -2,174 +2,195 @@
 
 > **Audit trail only.** Do not use as input to planning, research, or execution agents.
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
+>
+> **Этот лог замещает версию от 2026-05-21.** Предыдущая итерация фазы (с
+> автоклассификатором, learning-loop, группировкой по холдингам и гибридным LLM)
+> отменена. Новый scope радикально проще — фиксированные 4 типа, always-ask UX,
+> плоский programmatic-репорт, ручной ввод чисел через `/bitum_add`.
 
-**Date:** 2026-05-21
+**Date:** 2026-05-22 (rewrite)
 **Phase:** 04-bitum-weekly-report
-**Areas discussed:** Декомпозиция плана, Формат отчёта + LLM scope
-**Areas deferred (Claude's Discretion):** Парсинг all_prices.xlsx, Classifier confidence + learning UX
+**Trigger:** Заказчик пересмотрел задачу — «всё оказалось чуть проще, чем я думал».
+Существующая реализация (commit `5faad4f` и ранее) принципиально не подходит
+под новое понимание flow.
+
+**Areas discussed:**
+- Маппинг 4 типов файлов и судьба `all_prices`
+- Upload UX (always-ask vs автоклассификация)
+- Новая команда ручного ввода `/bitum_add` — scope
+- Стратегия миграции (refactor vs full rewrite)
+- Спецификация вычислений (defer/now)
+- Размещение ручных чисел в дайджесте
+- Структура итогового дайджеста (с холдингами vs плоский)
+- LLM в репортере (сохранить vs убрать)
+- Финальный набор битум-команд
+- Что делать со старыми данными и тестами
+- Cell-trace footer + partial-render
 
 ---
 
-## Gray area selection
+## Round 1: Core scope
+
+### Q1.1: Маппинг 4 типов файлов и судьба `all_prices`?
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Декомпозиция плана | 28 REQ: один большой план vs wave-структура vs 5-7 атомарных PLAN.md | ✓ |
-| Парсинг all_prices.xlsx | algoritm.md §5 сложная трансформация: raw парсинг vs «свод»-вкладка | |
-| Classifier confidence + learning UX | confidence ∈ [0,1] схема + inline-keyboard на confidence<1 | |
-| Формат отчёта + LLM scope | Markdown vs HTML, REPORT-07 trace, LLM scope (1-2 sentence vs multi-paragraph) | ✓ |
+| Маппинг верный, all_prices полностью удаляем | Парсер, signature, ссылка в types.ts, тесты, файл-пример — всё под нож | ✓ |
+| Маппинг верный, all_prices оставить (dead code) | Безопаснее при откате, но мусор | |
+| Маппинг другой — поправлю текстом | | |
 
-**User's choice:** Декомпозиция плана + Формат отчёта + LLM scope.
+**User's choice:** all_prices удаляется полностью. 4 фиксированных типа:
+`birzha_volumes`, `birzha_prices`, `fca_sellers`, `bitum_price_new`.
 
 ---
 
-## Декомпозиция плана
-
-### Q1: Сколько PLAN.md файлов и какая структура?
+### Q1.2: Что делать при загрузке xlsx — всегда спрашивать тип или запоминать?
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| 5-7 атомарных планов (рекомендую) | По фичам: 04-01 signatures+classifier, 04-02 5 parsers + REFINERY, 04-03 analyzer+reporter, 04-04 bot-команды, 04-05 миграция+алиасы | |
-| 3 средних wave-группы | 04-01 «ingest», 04-02 «report», 04-03 «bot» | |
-| 1 мега-план | 04-01 всё-в-одном | ✓ |
+| Всегда показывать inline-keyboard 4 кнопок | Никакой автоклассификации, никаких signatures, никакого learning. Каждый раз тап. | ✓ |
+| Пред-выбрать по имени файла, спросить подтверждение | Гибрид: matching по containsCase + всё равно ждём тап | |
+| Запомнить filename→type, в след раз пропустить | persistent map + риск рассинхрона | |
 
-**User's choice:** 1 мега-план.
-
-### Q2: Что идёт в first plan (foundation)?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Signatures + classifier shell + types | 04-01 = src/bitum/signatures.ts + classifier.ts + bitum/types.ts | |
-| Refineries.json + REFINERY-01..02 | 04-01 = расширить data/refineries.json + getCompany unit-tests | |
-| Claude решит при planning | /gsd-plan-phase сам выберет foundation из dependency-graph | ✓ |
-
-**User's choice:** Claude решит при planning.
-
-### Q3: Когда делать миграцию src/upload/ → src/bitum/?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Последним планом (рекомендую) | Сначала пишем новый src/bitum/* рядом со старым src/upload/*, потом 04-N = move + delete | ✓ |
-| Первым планом | 04-01 = git mv src/upload/ → src/bitum/ сразу | |
-| src/upload/ остаётся shim'ом | src/upload/*.ts переписывается в re-export shim'ы до v5.x release | |
-
-**User's choice:** Последним планом (рекомендую).
-
-### Q4: Как делаем 5 парсеров (BITUM-PARSE-01..05)?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Все 5 в одном плане (рекомендую) | Однородная логика (ExcelJS + cellToDate/Number + long-table) | ✓ |
-| 2 плана: existing 3 + new 2 | 04-A: refactor 3 existing, 04-B: 2 new (all_prices + bitum_price_new) | |
-| 5 отдельных планов | Каждый parser — свой PLAN.md | |
-
-**User's choice:** Все 5 в одном плане (рекомендую).
-
-### Clarification: Противоречие между Q1 (1 мега-план) и Q3/Q4 (которые подразумевали >1)
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| 1 PLAN.md с внутренней wave-структурой | Один файл 04-01-PLAN.md, внутри нумерованные wave-секции (signatures → parsers → reporter → bot → migrate), executor проходит wave-блоки внутри | ✓ |
-| Насамом деле 5-7 атомарных планов | Ошибся при клике. Делим на 04-01..04-NN файлы | |
-
-**User's choice:** 1 PLAN.md с внутренней wave-структурой.
-
-**Notes:** Финальная декомпозиция: один файл `04-01-PLAN.md` с 6 нумерованными wave-секциями. Atomic-commit на каждую wave. Точные имена wave-секций и foundation-список Claude уточнит при `/gsd-plan-phase`.
+**User's choice:** Always-ask. Радикальное упрощение — кладёт классификатор,
+сигнатуры и learning-UX целиком.
 
 ---
 
-## Формат отчёта + LLM scope
-
-### Q1: Формат отчёта (Telegram parse_mode)?
+### Q1.3: Новая команда ручного ввода чисел `/bitum_add` — что вводится и где появляется в дайджесте?
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| HTML (рекомендую) | parse_mode=HTML, теги <b>/<i>/<code>/<a>. Стабильный escape (паттерн из src/telegram.ts + sendHtml), в v3.0 уже работает | ✓ |
-| Markdown V1 | parse_mode=Markdown, *bold*/_italic_. Текущий renderer.ts уже пишет MD, но в v1.0 были проблемы со спецсимволами | |
-| MarkdownV2 | parse_mode=MarkdownV2 (жёсткий escape). Нет существующего escape-хелпера в проекте | |
+| Свободные пары label+value | Заказчик пишет что хочет, Claude не валидирует. Гибко, без структуры. | ✓ |
+| Фиксированные поля (БНД ₽/т, ПБВ ₽/т, дата) | Замена старому OCR-блоку. Жёстко, прозрачно. | |
+| Один pre-formatted текст | Pass-through блок текстом | |
+| Опишу формат текстом | | |
 
-**User's choice:** HTML (рекомендую).
-
-### Q2: LLM scope в отчёте (REPORT-01)?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Только summary 1-2 предложения (спека) | LLM пишет только вводный абзац. Внутри блоков — детерминированный рендер из цифр | |
-| Summary + narrative на каждую группу | Сверху summary, внутри каждого блока — 1-2 LLM-предложения с контекстом «Ключевые движения...» | |
-| Multi-параграф (текущий /summarize) | Оставить логику llm.ts без изменений (LLM пишет весь отчёт как narrative) | |
-
-**User's choice (free text):** Пользователь приложил полный эталонный формат отчёта из `docs/bitum/algoritm.md` §6 (период 30 апреля – 8 мая 2026 г., с разделами «### Объёмы биржевых торгов», «### Роснефть (Σ|Δ| = 3 795 тыс.т)», «### Газпромнефть», «### ЛУКОЙЛ», «### Прочие и независимые»).
-
-**Reflected back to user:** Гибрид — numbers programmatic, narrative-предложения LLM (top summary 1-3 предложения + framing внутри каждого блока + closing «остальные позиции остались на уровне начала периода»). Reporter подставляет все числа из ParsedRow, LLM пишет только framing-предложения с жёстким запретом выдумывать цифры.
-
-### Q2-confirm: Правильно ли я понял LLM scope?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Да, хибрид: numbers programmatic, narrative LLM | LLM пишет только framing, числа НПЗ/цены/Δ/объёмы из ParsedRow | ✓ |
-| Нет, только top summary, всё остальное детерминированно | LLM только вводный абзац, внутри блоков — буллеты без framing | |
-
-**User's choice:** Да, гибрид.
-
-### Q3: REQ-REPORT-07 «extractive trace» — где хранится cell-ref для каждого числа?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Структура внутри ReportResult (не в выводе) | Reporter возвращает { html, trace: NumberTrace[] }. Trace только в unit-тестах + логе | |
-| Footer-блок в конце отчёта | <code>Источники:</code> + список файлов/диапазонов в конце сообщения | ✓ |
-| Inline footnote-маркеры [1], [2]... | Каждое число с маркером, в конце развёрнутые ссылки | |
-
-**User's choice:** Footer-блок в конце отчёта.
-
-### Q3-followup: Trace footer — в каком виде?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| <code>blockquote</code> в конце, по файлу | Свёрнутая сводка: «birzha_prices.xlsx: 70 чисел из row 4..18 cols B..T», «bitum_price_new.xlsx: bnd 28000 ← B4, pbv 30000 ← D4» | ✓ |
-| Полный список всех чисел | Каждое число — отдельная строка в footer'е | |
-
-**User's choice:** Компактный свод по файлу.
-
-### Q4: /bitum_preview когда загружены не все 5 типов?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Render partial + checklist раздел | Рендерим то что есть, в начале warning «Доступно 3/5: ..., Отсутствуют: ...» | ✓ |
-| Блокировать до всех 5 | Ответ «Дозагрузите: ...», отчёт не строим | |
-| Порог minimum 2 типа (birzha_prices + fca) | Рендерим если есть минимум birzha+fca, иначе блокируем | |
-
-**User's choice:** Render partial + checklist.
+**User's choice:** Свободные пары label+value. Хранение пока обсудим на
+plan-phase, но направление — массив `{ label, value }` в неделе.
 
 ---
 
-## Done?
+### Q1.4: Как трогаем существующий код src/bitum/ + bot-bitum.ts?
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Готов к CONTEXT.md | Две пропущенные области → Claude's Discretion | ✓ |
-| Разобрать пропущенные области | Парсинг all_prices.xlsx + classifier confidence | |
-| Другие вопросы | Cross-check threshold, /bitum_reset semantics, /bitum_report confirmation UX, deprecation alias order | |
+| Refactor in-place: оставить 3 парсера и WeekStatus, выкинуть classifier+signatures+learning, переписать handleDocument | Безопасно для зелёных тестов парсеров, минимум изменений | |
+| Удалить всё (src/bitum/* + bot-bitum.ts), написать заново | Чистый старт, нет легаси-багов. Дорого по времени, но scope упростился настолько, что переписать ≤ refactor | ✓ |
+| Refactor + переименование типов в human-readable (birzha_daily, bitum_price_summary) | + миграция storage paths старых недель | |
 
-**User's choice:** Готов к CONTEXT.md.
+**User's choice:** Full rewrite — выкидываем `src/bitum/*`, `bot-bitum.ts`,
+все 18 битум-тестов, обе старые недели (W19, W21).
 
 ---
 
-## Claude's Discretion (deferred to planning)
+## Round 2: Report structure + new command placement
 
-- Foundation wave precise file list
-- Парсинг all_prices.xlsx (raw vs «свод»-вкладка)
-- Classifier confidence model (бинарная vs ступенчатая vs весовая)
-- Cross-check threshold (REPORT-08, env var vs хардкод)
-- Сохранение оригинальных имён файлов в meta
-- signatures-learned.json schema
-- /bitum_report cancel/timeout
-- renderer.ts vs reporter.ts разделение
+### Q2.1: Спецификация вычислений (что считаем по 3 базовым файлам и как сверяем со «Битум прайсом») — описать сейчас или отложить?
 
-## Deferred Ideas (Future Requirements)
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Опишу сейчас в чате | Полный спек в обсуждении, фиксируем в CONTEXT как locked decisions | |
+| Отложить до plan-phase | TBD в CONTEXT; Claude задаст focused-вопросы при /gsd-plan-phase по каждому типу | ✓ |
+| Берём старую спеку algoritm.md §6 как есть | Алгоритм правильный, меняется только upload flow | |
 
-- BITUM-OCR-01 (распознавание Снимок экрана.jpg)
-- BITUM-TG-06 (выбор недели)
-- BITUM-TG-07 (/bitum_undo)
-- BITUM-AUTOSEND-01 (автопостинг по cron)
-- BITUM-REPORT-09 (RSS cross-check)
-- BITUM-PARSE-07 (multi-sheet all_prices)
+**User's choice:** Defer. Это превращает D-18 (cross-check) и точные formulas
+в «Claude's Discretion» секцию CONTEXT.md.
+
+---
+
+### Q2.2: Где в дайджесте появляются ручные пары label+value из новой команды?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Отдельный блок в начале (после period header) | Похоже на старый OCR-блок «На дату X средняя цена БНД...» | ✓ |
+| Отдельный блок в конце | Не отвлекает от главных цифр | |
+| Отдельным вторым сообщением | Два разных поста в TG канале | |
+
+**User's choice:** В начало, после period header.
+
+---
+
+### Q2.3: Структура итогового дайджеста (блоки, порядок, группировка)?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Как docs/bitum/algoritm.md §6 (БНД snapshot → Объёмы → Роснефть → ГПН → ЛУКОЙЛ → Прочие) | Без изменений, только БНД snapshot теперь из ручной команды | |
+| Упростить — без группировки по холдингам, плоский список движений | Один блок «изменения цен», все НПЗ единым списком | ✓ |
+| Новая структура — опишу | | |
+
+**User's choice:** Плоский список. Это отменяет старый D-02 (фиксированный
+порядок холдингов) и упрощает analyzer (нет нужды в `byCompanyFixedOrder`,
+группировке Татнефть, выделении «Прочие»).
+
+---
+
+## Round 3: LLM + commands + cleanup + footer
+
+### Q3.1: Гибридный LLM в репортере (DeepSeek пишет framing-фразы, programmatic подставляет числа) — сохраняем или выкидываем?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Убрать LLM целиком — только programmatic репорт | Плоский список движений не требует narrative. Детерминистично, без галлюцинаций, без DeepSeek-ключа в bitum-flow | ✓ |
+| Оставить гибрид (старый D-08) | Держим llm.ts, но с плоским форматом он меньше пользы | |
+
+**User's choice:** Убрать LLM целиком. `src/bitum/llm.ts` под нож, DeepSeek
+не вызывается из bitum-flow.
+
+---
+
+### Q3.2: Набор битум-команд в новой версии?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| /bitum_status + /bitum_report (preview→publish) + /bitum_reset + новая /bitum_add | Старые 4 + добавили одну. /bitum_preview выкидываем — он был дублем report-flow без publish | ✓ |
+| /bitum_status + /bitum_preview + /bitum_report + /bitum_reset + /bitum_add | Сохранить preview как отдельную команду | |
+| Предложу другой набор текстом | | |
+
+**User's choice:** 4 команды (без preview). Превью получается через
+`/bitum_report` → «❌ Отмена».
+
+---
+
+### Q3.3: data/uploads/2026-W19/ + старые vitest-тесты src/bitum/__tests__/ — что делаем?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Удалить всё (старые недели + все 18 битум-тестов), пишем с нуля | Максимально чистый старт. Новые фикстуры из docs/examples/ при plan-phase | ✓ |
+| Удалить тесты, сохранить W19 как ручную тест-фикстуру | Smoke-тест после переписывания, но требует переименования fca.xlsx → fca_sellers.xlsx | |
+| Сохранить и тесты и данные, адаптировать | Риск дохлых тестов про classifier/learning | |
+
+**User's choice:** Полное удаление. `data/uploads/2026-W19/`,
+`data/uploads/2026-W21/`, все 18 файлов `src/__tests__/bitum-*.test.ts`.
+
+---
+
+### Q3.4: Cell-trace footer («Источники: birzha_prices.xlsx: 70 чисел из B4..T18») и partial-render («Доступно 3/4 типов») — оставляем или режем?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Оставляем оба — trace в footer + partial-render warning | Как старый D-09 + D-10. Trace помогает верифицировать, partial работает при неполных данных | ✓ |
+| Режем trace, оставляем partial-render | Trace = визуальный шум в финале | |
+| Режем оба — максимальный минимализм | Дайджест только при полном пакете, иначе ошибка | |
+
+**User's choice:** Оба остаются. Это сохраняет D-09 (trace footer) и D-10
+(partial render) из старого CONTEXT.md как D-12 §7 и D-13 в новом.
+
+---
+
+## Claude's Discretion (отложено на plan-phase)
+
+- Точные формулы вычислений по 4 типам файлов
+- Cross-check rule между 3 базовыми файлами и «Битум прайсом» (порог, направление)
+- Точный синтаксис `/bitum_add` (`label=value` vs `label value` vs multi-line)
+- Сортировка движений в плоском списке (по |Δ| desc / по абсолюту / хронологически)
+- Поведение перезаписи xlsx (silent overwrite vs подтверждение)
+- Формат cell-trace footer (по файлу vs построчно)
+- Поведение pending preview в `/bitum_report` (timeout vs вечный wait)
+- Структура `manual-numbers.json` (плоский массив vs с группировкой)
+- Расширение `data/refineries.json` под 4 эталонных файла
+
+## Deferred Ideas
+
+См. полный список в `04-CONTEXT.md` <deferred> секции — без изменений к
+текущему обсуждению (Future REQUIREMENTS.md §Future, Out of Scope PROJECT.md).
