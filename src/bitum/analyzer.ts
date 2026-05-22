@@ -26,7 +26,7 @@ export interface AnalyzeOptions {
   volumesTopN?: number;
 }
 
-const DEFAULT_VOLUMES_TOP_N = 7;
+const DEFAULT_VOLUMES_TOP_N = 10;
 
 function computePeriod(parsed: ParsedByType): { from: string; to: string } {
   const dates: string[] = [];
@@ -53,9 +53,14 @@ function aggregateVolumes(
 ): { totalT: number; byRefinery: VolumeAggregate[] } {
   if (!rows || rows.length === 0) return { totalT: 0, byRefinery: [] };
   const acc = new Map<string, VolumeAggregate>();
-  let totalT = 0;
+  let sumOfRefineriesT = 0;
+  // File-репортируемые totals из col B «Объем тыс.тн.» (dedup по дате).
+  const fileTotalsByDate = new Map<string, number>();
   for (const r of rows) {
-    totalT += r.volumeT;
+    sumOfRefineriesT += r.volumeT;
+    if (r.dayTotalT !== undefined && !fileTotalsByDate.has(r.date)) {
+      fileTotalsByDate.set(r.date, r.dayTotalT);
+    }
     const key = r.refineryCanonical;
     const cur = acc.get(key);
     if (cur) {
@@ -68,6 +73,11 @@ function aggregateVolumes(
       });
     }
   }
+  // Если файл сам репортирует totals по col B — используем их (это то, что
+  // оператор видит в xlsx и ожидает увидеть в дайджесте — fix «сумма не бьётся»).
+  // Fallback к сумме per-refinery если col B пустой.
+  const fileTotalT = [...fileTotalsByDate.values()].reduce((a, b) => a + b, 0);
+  const totalT = fileTotalT > 0 ? fileTotalT : sumOfRefineriesT;
   const byRefinery = [...acc.values()]
     .sort((a, b) => b.sumT - a.sumT)
     .slice(0, topN);
@@ -323,19 +333,37 @@ export function analyzeBitum(
   const period = computePeriod(parsed);
   const topN = options.volumesTopN ?? DEFAULT_VOLUMES_TOP_N;
   const volumes = aggregateVolumes(parsed.birzha_volumes, topN);
-  // Movements (плоский список из 3 источников).
-  const movements: PriceMovement[] = [
-    ...movementsFromBirzhaPrices(parsed.birzha_prices, "birzha_prices"),
-    ...movementsFromFca(parsed.fca_sellers, "fca_sellers"),
-    ...movementsFromBitumPrice(parsed.bitum_price_new, "bitum_price_new"),
-  ];
-  // Sort: |deltaAbs| desc, tiebreak refineryCanonical ASC.
-  movements.sort((a, b) => {
+  // Биржевые движения цен сортируем В ТОЙ ЖЕ ОЧЕРЁДНОСТИ, что и Top-N volumes
+  // (по volume rank, не по |Δ|) — требование заказчика 2026-05-22 «давайте
+  // сделаем для топ-10 в той же очерёдности». НПЗ вне Top-N идут после, тоже
+  // отсортированы по volume rank всех данных. FCA и Битум прайс — по |Δ| desc.
+  const volumeRank = new Map<string, number>();
+  volumes.byRefinery.forEach((v, i) => volumeRank.set(v.refineryCanonical, i));
+  const sortByVolumeRank = (a: PriceMovement, b: PriceMovement): number => {
+    const ra = volumeRank.get(a.refineryCanonical) ?? Number.MAX_SAFE_INTEGER;
+    const rb = volumeRank.get(b.refineryCanonical) ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
+    return a.refineryCanonical < b.refineryCanonical ? -1 : 1;
+  };
+  const sortByDeltaDesc = (a: PriceMovement, b: PriceMovement): number => {
     const da = Math.abs(a.deltaAbs);
     const db = Math.abs(b.deltaAbs);
     if (db !== da) return db - da;
     return a.refineryCanonical < b.refineryCanonical ? -1 : 1;
-  });
+  };
+  const birzhaMovs = movementsFromBirzhaPrices(
+    parsed.birzha_prices,
+    "birzha_prices"
+  );
+  birzhaMovs.sort(sortByVolumeRank);
+  const fcaMovs = movementsFromFca(parsed.fca_sellers, "fca_sellers");
+  fcaMovs.sort(sortByDeltaDesc);
+  const bpnMovs = movementsFromBitumPrice(
+    parsed.bitum_price_new,
+    "bitum_price_new"
+  );
+  bpnMovs.sort(sortByDeltaDesc);
+  const movements: PriceMovement[] = [...birzhaMovs, ...fcaMovs, ...bpnMovs];
   const cc = crossCheck(parsed, options.thresholdPct);
   const ccd = crossCheckDelta(parsed);
   const available: Record<BitumType, boolean> = {
@@ -344,8 +372,18 @@ export function analyzeBitum(
     fca_sellers: parsed.fca_sellers !== null,
     bitum_price_new: parsed.bitum_price_new !== null,
   };
+  // FCA-specific date range — для channel header «Цены прайс (FCA) — DD месяц».
+  let fcaDateRange: { from: string; to: string } | undefined;
+  if (parsed.fca_sellers && parsed.fca_sellers.length > 0) {
+    const fcaDates = parsed.fca_sellers.map((r) => r.date).sort();
+    fcaDateRange = {
+      from: fcaDates[0],
+      to: fcaDates[fcaDates.length - 1],
+    };
+  }
   return {
     period,
+    fcaDateRange,
     volumes,
     movements,
     crossCheck: cc,

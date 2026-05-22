@@ -32,6 +32,7 @@ const RowSchema = z.object({
   refineryCanonical: z.string(),
   refineryRaw: z.string(),
   volumeT: z.number().nonnegative(),
+  dayTotalT: z.number().nonnegative().optional(),
 });
 
 export async function parseBirzhaVolumes(
@@ -94,6 +95,10 @@ export async function parseBirzhaVolumes(
         continue;
       }
       lastDataRow = r;
+      // Col B = «Объем тыс.тн.» — файл-репортируемый total за день (тыс.т → т).
+      const dayTotalKt = cellNumber(dataRow.getCell(2));
+      const dayTotalT =
+        dayTotalKt !== null ? dayTotalKt * 1000 : undefined;
       for (const colStr of Object.keys(refineryByCol)) {
         const c = Number(colStr);
         const refineryRaw = refineryByCol[c];
@@ -105,6 +110,7 @@ export async function parseBirzhaVolumes(
           refineryCanonical: norm.canonical,
           refineryRaw,
           volumeT: vol * 1000, // тыс.т → т
+          dayTotalT,
         };
         const parsed = RowSchema.safeParse(candidate);
         if (!parsed.success) {

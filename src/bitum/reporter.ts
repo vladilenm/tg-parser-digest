@@ -33,6 +33,31 @@ function fmtDateRu(iso: string): string {
   return `${m[3]}.${m[2]}.${m[1]}`;
 }
 
+const RU_MONTH_GEN: Record<string, string> = {
+  "01": "января",
+  "02": "февраля",
+  "03": "марта",
+  "04": "апреля",
+  "05": "мая",
+  "06": "июня",
+  "07": "июля",
+  "08": "августа",
+  "09": "сентября",
+  "10": "октября",
+  "11": "ноября",
+  "12": "декабря",
+};
+
+function fmtDateRuShort(iso: string): string {
+  // ISO "YYYY-MM-DD" → "DD месяца" (родительный падеж, без года).
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const day = Number(m[3]); // strip leading zero
+  const month = RU_MONTH_GEN[m[2]];
+  if (!month) return iso;
+  return `${day} ${month}`;
+}
+
 function signed(n: number, decimals = 0): string {
   if (n > 0) return `+${n.toFixed(decimals)}`;
   if (n < 0) return `−${Math.abs(n).toFixed(decimals)}`; // U+2212
@@ -79,7 +104,7 @@ function buildVolumesBlock(analysis: AnalysisResult): string | null {
   }
   const totalKt = analysis.volumes.totalT / 1000;
   const lines: string[] = [
-    `<b>Объёмы продаж на бирже</b> (тыс.т по каждому заводу, суточная по НПЗ)`,
+    `<b>Объёмы продаж на бирже</b>`,
     `Σ за период: ${fmtNumber(totalKt, 2)} тыс.т`,
     `Топ-${analysis.volumes.byRefinery.length}:`,
   ];
@@ -103,18 +128,23 @@ function formatMovementLine(m: PriceMovement): string {
 function buildMovementsBySource(
   analysis: AnalysisResult,
   source: PriceMovement["source"],
-  heading: string
+  heading: string | null,
+  capN: number = MOVEMENTS_CAP
 ): string | null {
   const items = analysis.movements.filter((m) => m.source === source);
   if (items.length === 0) return null;
-  const capped = items.slice(0, MOVEMENTS_CAP);
-  const lines: string[] = [`<b>${heading}</b>`];
+  const capped = items.slice(0, capN);
+  const lines: string[] = [];
+  if (heading) lines.push(`<b>${heading}</b>`);
   for (const m of capped) lines.push(formatMovementLine(m));
-  if (items.length > MOVEMENTS_CAP) {
-    lines.push(`… ещё ${items.length - MOVEMENTS_CAP} (см. xlsx)`);
+  if (items.length > capN) {
+    lines.push(`… ещё ${items.length - capN} (см. xlsx)`);
   }
   return lines.join("\n");
 }
+
+// Cap для биржевых движений = 10 (заказчик 2026-05-22 «давайте сделаем для топ-10»).
+const BIRZHA_CAP = 10;
 
 function buildBirzhaMovementsBlock(analysis: AnalysisResult): string | null {
   if (!analysis.available.birzha_prices) return null;
@@ -122,19 +152,21 @@ function buildBirzhaMovementsBlock(analysis: AnalysisResult): string | null {
     buildMovementsBySource(
       analysis,
       "birzha",
-      "Изменение цен за неделю (биржа)"
+      "Изменение цен за неделю (биржа)",
+      BIRZHA_CAP
     ) ?? "<b>Изменение цен за неделю (биржа)</b>\nЦены не изменились."
   );
 }
 
+/**
+ * FCA: возвращает ТОЛЬКО bullets (без inner heading) — channel header сам
+ * несёт имя «Цены прайс (FCA) — DD месяц» (заказчик 2026-05-22, screenshot 2).
+ */
 function buildFcaMovementsBlock(analysis: AnalysisResult): string | null {
   if (!analysis.available.fca_sellers) return null;
   return (
-    buildMovementsBySource(
-      analysis,
-      "fca",
-      "Сравнение продавцов (FCA, неделя→неделя)"
-    ) ?? "<b>Сравнение продавцов (FCA)</b>\nЦены продавцов не изменились."
+    buildMovementsBySource(analysis, "fca", null) ??
+    "Цены продавцов не изменились."
   );
 }
 
@@ -263,14 +295,18 @@ export function buildReport(
     });
   }
 
-  // Группировка по «каналам продаж» (по сообщению заказчика 2026-05-22):
-  // канал «Биржа» = объёмы + цены биржи; канал «Продавцы (FCA)» = только цены;
+  // Группировка по «каналам продаж» (заказчик 2026-05-22):
+  // канал «Биржа» = объёмы + цены биржи; канал «Цены прайс (FCA)» = только цены;
   // «Битум прайс» — reference (сводная) + расхождения дельт.
   const birzhaChannel = buildChannelBlock("Биржевой канал", [
     buildVolumesBlock(analysis),
     buildBirzhaMovementsBlock(analysis),
   ]);
-  const fcaChannel = buildChannelBlock("Канал продавцов (FCA)", [
+  // FCA channel header включает дату конца периода FCA («Цены прайс (FCA) — 15 мая»).
+  const fcaTitle = analysis.fcaDateRange?.to
+    ? `Цены прайс (FCA) — ${fmtDateRuShort(analysis.fcaDateRange.to)}`
+    : "Цены прайс (FCA)";
+  const fcaChannel = buildChannelBlock(fcaTitle, [
     buildFcaMovementsBlock(analysis),
   ]);
   const referenceChannel = buildChannelBlock("Reference: «Битум прайс»", [

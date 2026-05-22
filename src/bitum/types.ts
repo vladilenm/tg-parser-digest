@@ -44,6 +44,11 @@ export interface ParsedVolumeRow {
   refineryCanonical: string;
   refineryRaw: string;
   volumeT: number; // тонны (исходное * 1000)
+  // Файл-репортируемый total за тот же день (col B «Объем тыс.тн.» × 1000).
+  // Может быть больше суммы per-refinery (в файле есть неучтённые объёмы);
+  // используется в analyzer для расчёта grand total — чтобы Σ совпадал с
+  // тем что видит оператор в xlsx, а не с нашим сумм по НПЗ.
+  dayTotalT?: number;
 }
 
 export interface ParsedPriceRow {
@@ -131,9 +136,10 @@ export interface VolumeAggregate {
 }
 
 export interface AnalysisResult {
-  period: { from: string; to: string }; // ISO даты
+  period: { from: string; to: string }; // ISO даты — min/max across all sources
+  fcaDateRange?: { from: string; to: string }; // ISO; для FCA channel header
   volumes: { totalT: number; byRefinery: VolumeAggregate[] };
-  movements: PriceMovement[]; // плоский список, sorted by |deltaAbs| desc (D-11 default)
+  movements: PriceMovement[]; // sources sorted: birzha по volume rank, fca/bpn по |Δ| desc
   crossCheck: CrossCheckIssue[];
   crossCheckDelta: CrossCheckDeltaIssue[]; // наша Δ vs declared Δ
   available: Record<BitumType, boolean>;
