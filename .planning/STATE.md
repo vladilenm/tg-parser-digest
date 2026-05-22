@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-05-21T15:48:28.760Z"
+stopped_at: Phase 4 context rewritten — simplified bitum scope (4 fixed types, always-ask UX, /bitum_add, flat report, no LLM)
+last_updated: "2026-05-22T05:54:27.125Z"
 last_activity: 2026-05-21
 progress:
   total_phases: 4
@@ -113,8 +113,8 @@ Race condition: bot write overlaps pipeline read at 20:00 MSK → corrupted JSON
 
 ## Session Continuity
 
-**Last session:** 2026-05-21T15:48:28.757Z
-**Stopped at:** Completed 04-01-PLAN.md
+**Last session:** 2026-05-22T05:54:27.123Z
+**Stopped at:** Phase 4 context rewritten — simplified bitum scope (4 fixed types, always-ask UX, /bitum_add, flat report, no LLM)
 **Next action:** `/gsd-plan-phase 1`
 
 ---
