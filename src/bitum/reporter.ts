@@ -93,33 +93,11 @@ function buildPeriodHeader(analysis: AnalysisResult): string {
   return `<b>Битумный отчёт ${fmtDateRu(analysis.period.from)} – ${fmtDateRu(analysis.period.to)}</b>`;
 }
 
-function buildWeeklyAveragesBlock(
-  analysis: AnalysisResult
-): string | null {
-  const wa = analysis.weeklyAverages;
-  if (!wa || (!wa.bnd && !wa.pbv)) return null;
-  const dateText = fmtDateRuFull(wa.date);
-  const lines: string[] = [];
-  if (wa.bnd) {
-    const avg = wa.bnd.avgRub.toFixed(0);
-    const dAbs = signed(wa.bnd.deltaAbs, 0);
-    const dPct =
-      wa.bnd.deltaPct !== null ? `, ${fmtPctRu(wa.bnd.deltaPct, 1)}% за неделю` : "";
-    lines.push(
-      `на дату ${dateText} средняя цена <b>БНД</b> составила ${avg} ₽/т (${dAbs} ₽${dPct})`
-    );
-  }
-  if (wa.pbv) {
-    const avg = wa.pbv.avgRub.toFixed(0);
-    const dAbs = signed(wa.pbv.deltaAbs, 0);
-    const dPct =
-      wa.pbv.deltaPct !== null ? `, ${fmtPctRu(wa.pbv.deltaPct, 1)}% за неделю` : "";
-    lines.push(
-      `средняя цена <b>ПБВ</b> составила ${avg} ₽/т (${dAbs} ₽${dPct})`
-    );
-  }
-  return lines.join("\n");
-}
+// Авто-блок «вначале» (средние цены БНД/ПБВ) намеренно НЕ рендерится —
+// заказчик 2026-05-22 явно попросил manual input через /bitum_add вместо
+// auto-расчёта. analyzer.computeWeeklyAverages всё равно вычисляется и
+// доступен в AnalysisResult.weeklyAverages для возможного будущего
+// использования (export, debug-команда и т.п.).
 
 function buildManualNumbersBlock(manualNumbers: ManualNumber[]): string | null {
   if (manualNumbers.length === 0) return null;
@@ -151,7 +129,7 @@ function buildVolumesBlock(analysis: AnalysisResult): string | null {
   const totalKt = analysis.volumes.totalT / 1000;
   const lines: string[] = [
     `<b>Объёмы продаж на бирже</b>`,
-    `Σ за период: ${fmtNumber(totalKt, 2)} тыс.т`,
+    `Сумма за период: ${fmtNumber(totalKt, 2)} тыс.т`,
     `Топ-${analysis.volumes.byRefinery.length}:`,
   ];
   for (const v of analysis.volumes.byRefinery) {
@@ -362,7 +340,6 @@ export function buildReport(
 
   const blocks: (string | null)[] = [
     buildPeriodHeader(analysis),
-    buildWeeklyAveragesBlock(analysis),
     buildManualNumbersBlock(manualNumbers),
     buildPartialRenderBlock(analysis),
     birzhaChannel,
