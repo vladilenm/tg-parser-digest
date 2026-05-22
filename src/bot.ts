@@ -1,5 +1,6 @@
 // src/bot.ts — Telegram bot polling + commands handler.
-// Использует тот же TG_BOT_TOKEN, что и delivery (D-01). CRUD-обёртки рядом с handler'ами (D-16).
+// Использует тот же TG_BOT_TOKEN, что и delivery (D-01).
+// Phase 4 v5.1: bitum-handlers wired через src/bot-bitum.ts (Task 10).
 
 import { mutate, loadChannels, type ChannelEntry } from "./channels-store.js";
 import { log } from "./logger.js";
@@ -55,8 +56,6 @@ export interface TgInlineKeyboardButton {
 }
 
 // BOT-UI-01 / D-01 / D-05: reply-keyboard 2×2 под полем ввода.
-// Текст кнопки = текст сообщения, который юзер шлёт боту (Telegram эмулирует input);
-// в handleCommand есть EMOJI_BUTTON_MAP, который нормализует такой text → "/cmd".
 interface TgKeyboardButton {
   text: string;
 }
@@ -67,8 +66,6 @@ interface TgReplyKeyboardMarkup {
   one_time_keyboard?: boolean;
 }
 
-// BOT-UI-01 / D-05: единая 2×2 нижняя клавиатура. Прикладывается ко всем
-// исходящим сообщениям бот→пользователь.
 const MAIN_KEYBOARD: TgReplyKeyboardMarkup = {
   keyboard: [
     [{ text: "📊 Статус загрузок" }, { text: "🧠 Отчёт битум" }],
@@ -84,7 +81,6 @@ const MAIN_KEYBOARD: TgReplyKeyboardMarkup = {
 
 const TG_API = "https://api.telegram.org";
 const POLL_TIMEOUT_SEC = 30;
-// Telegram username regex: 5-32 символа, начинается с буквы, далее буквы/цифры/_.
 const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
 
 let lastOffset = 0;
@@ -95,10 +91,6 @@ let pollingActive = false;
 // Helpers.
 // =============================================================================
 
-/**
- * Парсит BOT_ALLOWED_USER_IDS (comma-separated numeric) в Set<number>.
- * Пустые/нечисловые/неположительные токены отбрасываются.
- */
 export function parseAllowlist(envValue: string | undefined): Set<number> {
   if (!envValue) return new Set();
   return new Set(
@@ -111,9 +103,6 @@ export function parseAllowlist(envValue: string | undefined): Set<number> {
   );
 }
 
-/**
- * Strip leading `@`, валидация по USERNAME_REGEX.
- */
 export function normalizeUsername(raw: string): string | null {
   const trimmed = raw.trim();
   const stripped = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
@@ -121,9 +110,6 @@ export function normalizeUsername(raw: string): string | null {
   return stripped;
 }
 
-/**
- * Обёртка над fetch к Bot API. На !res.ok — throw c HTTP-кодом и телом ответа.
- */
 export async function tgFetch<T>(
   token: string,
   method: string,
@@ -143,10 +129,6 @@ export async function tgFetch<T>(
   return (await res.json()) as T;
 }
 
-/**
- * D-09/D-10: ответ на команду — sendMessage в тот же chat,
- * с reply_to_message_id, plain-text без HTML/Markdown форматирования.
- */
 export async function sendReply(
   token: string,
   chatId: number,
@@ -162,10 +144,6 @@ export async function sendReply(
   });
 }
 
-/**
- * Вариант sendReply с inline-keyboard (D-11/D-13). Используется для подтверждения
- * /remove_channel — две кнопки confirm/cancel.
- */
 export async function sendReplyWithKeyboard(
   token: string,
   chatId: number,
@@ -182,9 +160,6 @@ export async function sendReplyWithKeyboard(
   });
 }
 
-/**
- * Шлёт plain-text сообщение в чат БЕЗ reply_to.
- */
 export async function sendPlain(
   token: string,
   chatId: number,
@@ -198,10 +173,6 @@ export async function sendPlain(
   });
 }
 
-/**
- * Шлёт HTML-сообщение (parse_mode: "HTML"). Whitelist: <b>, <i>, <u>, <s>,
- * <code>, <pre>, <a>, <blockquote>, <tg-spoiler>. Без <h1>/<hr>/<br>.
- */
 export async function sendHtml(
   token: string,
   chatId: number,
@@ -220,10 +191,6 @@ export async function sendHtml(
 // Telegram file download helper.
 // =============================================================================
 
-/**
- * Скачивает файл по file_id через Bot API: getFile → file_path → fetch.
- * Возвращает Buffer + предложенное имя.
- */
 export async function downloadTgFile(
   token: string,
   fileId: string,
@@ -253,12 +220,25 @@ export async function downloadTgFile(
 }
 
 // =============================================================================
+// Bitum-handlers wiring (Phase 4 v5.1, Task 10).
+// Импорт PLACED HERE (not at top) — bot-bitum.ts импортирует send* / tgFetch /
+// типы из этого файла; чтобы избежать циклической инициализации, объявляем
+// helpers выше.
+// =============================================================================
+
+import {
+  handleBitumDocument,
+  handleBitumStatus,
+  handleBitumReport,
+  handleBitumReset,
+  handleBitumAdd,
+  handleBitumCallback,
+} from "./bot-bitum.js";
+
+// =============================================================================
 // CRUD-обёртки (D-16): живут рядом с handler'ами.
 // =============================================================================
 
-/**
- * Возвращает текстовое представление текущего списка каналов.
- */
 export function listChannels(): string {
   const channels = loadChannels();
   if (channels.length === 0) return "Список каналов пуст";
@@ -293,8 +273,7 @@ export async function removeChannel(
 }
 
 // =============================================================================
-// Document handler — bitum-wiring (Task 10 будет финализировать).
-// Между Task 1 и Task 10 handleDocument временно отвечает «not implemented».
+// Document handler — bitum-wiring.
 // =============================================================================
 
 export async function handleDocument(
@@ -309,21 +288,45 @@ export async function handleDocument(
     log.info(`[bot] denied: from=${userId} cmd=document`);
     return;
   }
-  // Placeholder до Task 10 — bitum-wiring добавит реальный bridge в handleBitumDocument.
-  await sendPlain(
-    token,
-    msg.chat.id,
-    "⚠️ Битум-пайплайн в процессе настройки. Попробуйте позже."
-  );
+  const chatId = msg.chat.id;
+  try {
+    // T-04-01 первый уровень — pre-check размера до загрузки.
+    const MAX = Number(
+      process.env.BITUM_MAX_XLSX_BYTES ?? 10 * 1024 * 1024
+    );
+    if (doc.file_size && doc.file_size > MAX) {
+      await sendPlain(
+        token,
+        chatId,
+        `⚠️ Файл слишком большой (>${Math.round(MAX / 1024 / 1024)} МБ). Отклонено.`
+      );
+      return;
+    }
+    await sendPlain(token, chatId, "⏳ Получаю файл…");
+    const { buffer, fileName } = await downloadTgFile(
+      token,
+      doc.file_id,
+      doc.file_name ?? "upload.xlsx"
+    );
+    log.info(
+      `[bot] document received: from=${userId} name=${fileName} size=${buffer.length}`
+    );
+    await handleBitumDocument(token, msg, buffer, fileName);
+  } catch (err) {
+    const msgText = (err as Error).message ?? String(err);
+    log.error(`[bot] handleDocument error: ${msgText}`);
+    try {
+      await sendPlain(token, chatId, `⚠️ Ошибка: ${msgText.slice(0, 300)}`);
+    } catch {
+      // tgFetch уже залогирован.
+    }
+  }
 }
 
 // =============================================================================
 // Command router.
 // =============================================================================
 
-/**
- * Маршрутизирует команды от allowlist'а. Не-allowlist → silent ignore + log.info.
- */
 export async function handleCommand(
   token: string,
   msg: TgMessage,
@@ -341,7 +344,7 @@ export async function handleCommand(
   if (!userId || !text.startsWith("/")) return;
 
   const firstWord = text.split(/\s+/)[0];
-  const cmd = firstWord.split("@")[0]; // "/channels@MyBot" → "/channels"
+  const cmd = firstWord.split("@")[0];
 
   if (!allowlist.has(userId)) {
     log.info(`[bot] denied: from=${userId} cmd=${cmd}`);
@@ -418,18 +421,46 @@ export async function handleCommand(
     );
     return;
   }
+  // Phase 4 v5.1 bitum-команды.
+  if (cmd === "/bitum_status") {
+    await handleBitumStatus(token, msg);
+    return;
+  }
+  if (cmd === "/bitum_report") {
+    await handleBitumReport(token, msg);
+    return;
+  }
+  if (cmd === "/bitum_reset") {
+    await handleBitumReset(token, msg);
+    return;
+  }
+  if (cmd === "/bitum_add") {
+    await handleBitumAdd(token, msg);
+    return;
+  }
   if (cmd === "/start") {
     await sendReply(
       token,
       msg.chat.id,
       msg.message_id,
-      "Привет! Я бот-помощник. Доступные действия — на клавиатуре ниже или через меню / слева от поля ввода."
+      "Привет! Я бот по битуму. Пришлите xlsx — я спрошу что это, накоплю недельный пакет и соберу отчёт по /bitum_report. Список команд — на клавиатуре ниже или /help."
     );
     return;
   }
   if (cmd === "/help") {
     const helpText = [
-      "Доступные команды:",
+      "Битум-неделя (пакет 4 xlsx):",
+      "  /bitum_status — что уже загружено",
+      "  /bitum_add label=value — добавить ручное число",
+      "  /bitum_report — собрать отчёт и опубликовать в канал",
+      "  /bitum_reset — обнулить текущую неделю",
+      "",
+      "Как пользоваться:",
+      "1. Пришлите xlsx — бот спросит «какой это файл?» (4 варианта + Отмена).",
+      "2. Когда нужны — /bitum_add для ручных чисел, /bitum_status для проверки.",
+      "3. /bitum_report → preview в DM → «📤 Опубликовать» или «❌ Отмена».",
+      "",
+      "Каналы новостей:",
       "  /channels, /add_channel @name, /remove_channel @name",
     ].join("\n");
     await sendReply(token, msg.chat.id, msg.message_id, helpText);
@@ -439,7 +470,7 @@ export async function handleCommand(
 }
 
 // =============================================================================
-// Callback query handler: /remove_channel confirmation flow.
+// Callback query handler.
 // =============================================================================
 
 export function parseRemoveCallbackData(
@@ -464,6 +495,12 @@ export async function handleCallbackQuery(
   if (!allowlist.has(userId)) {
     log.info(`[bot] denied: from=${userId} cmd=callback:${data}`);
     return;
+  }
+
+  // Phase 4 v5.1: bitum callbacks (bu:/br:/brs:) routed first.
+  if (/^(bu|br|brs):/.test(data)) {
+    const handled = await handleBitumCallback(token, cb);
+    if (handled) return;
   }
 
   const parsed = parseRemoveCallbackData(data);
@@ -564,6 +601,16 @@ async function registerBotCommands(token: string): Promise<void> {
   const commands = [
     { command: "start", description: "Запустить бота / показать меню" },
     { command: "help", description: "Инструкция" },
+    { command: "bitum_status", description: "Чек-лист битум-недели" },
+    {
+      command: "bitum_report",
+      description: "Битум-отчёт (preview → канал)",
+    },
+    {
+      command: "bitum_reset",
+      description: "Сбросить текущую битум-неделю",
+    },
+    { command: "bitum_add", description: "Добавить ручное число" },
     { command: "channels", description: "Список каналов" },
     { command: "add_channel", description: "Добавить канал" },
     { command: "remove_channel", description: "Удалить канал" },
