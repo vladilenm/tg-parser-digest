@@ -27,10 +27,10 @@ function escapeHtml(s: string): string {
 }
 
 function fmtDateRu(iso: string): string {
-  // ISO "YYYY-MM-DD" → "DD.MM.YY"
+  // ISO "YYYY-MM-DD" → "DD.MM.YYYY"
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return iso;
-  return `${m[3]}.${m[2]}.${m[1].slice(2)}`;
+  return `${m[3]}.${m[2]}.${m[1]}`;
 }
 
 function signed(n: number, decimals = 0): string {
@@ -41,17 +41,6 @@ function signed(n: number, decimals = 0): string {
 
 function fmtNumber(n: number, decimals = 0): string {
   return n.toFixed(decimals);
-}
-
-function sourceLabel(s: PriceMovement["source"]): string {
-  switch (s) {
-    case "birzha":
-      return "биржа";
-    case "fca":
-      return "FCA";
-    case "bitum_price_new":
-      return "Битум прайс";
-  }
 }
 
 function buildPeriodHeader(analysis: AnalysisResult): string {
@@ -86,12 +75,12 @@ function buildPartialRenderBlock(analysis: AnalysisResult): string | null {
 function buildVolumesBlock(analysis: AnalysisResult): string | null {
   if (!analysis.available.birzha_volumes) return null;
   if (analysis.volumes.byRefinery.length === 0) {
-    return `<b>Объёмы биржевых торгов</b>\nДанных нет.`;
+    return `<b>Объёмы продаж на бирже</b>\nДанных нет.`;
   }
   const totalKt = analysis.volumes.totalT / 1000;
   const lines: string[] = [
-    `<b>Объёмы биржевых торгов</b>`,
-    `Σ за период: ${fmtNumber(totalKt, 2)} тыс.т.`,
+    `<b>Объёмы продаж на бирже</b> (тыс.т по каждому заводу, суточная по НПЗ)`,
+    `Σ за период: ${fmtNumber(totalKt, 2)} тыс.т`,
     `Топ-${analysis.volumes.byRefinery.length}:`,
   ];
   for (const v of analysis.volumes.byRefinery) {
@@ -103,25 +92,79 @@ function buildVolumesBlock(analysis: AnalysisResult): string | null {
   return lines.join("\n");
 }
 
-function buildMovementsBlock(analysis: AnalysisResult): string {
-  if (analysis.movements.length === 0) {
-    return `<b>Движения цен</b>\nЦены остались на уровне начала периода.`;
+function formatMovementLine(m: PriceMovement): string {
+  const priceFromStr = m.priceFrom !== null ? fmtNumber(m.priceFrom, 0) : "?";
+  const priceToStr = fmtNumber(m.priceTo, 0);
+  const deltaAbsStr = signed(m.deltaAbs, 0);
+  const deltaPctStr = m.deltaPct !== null ? `, ${signed(m.deltaPct, 1)}%` : "";
+  return `• <b>${escapeHtml(m.refineryCanonical)}</b>: ${priceFromStr} → ${priceToStr} ₽ (Δ ${deltaAbsStr} ₽${deltaPctStr})`;
+}
+
+function buildMovementsBySource(
+  analysis: AnalysisResult,
+  source: PriceMovement["source"],
+  heading: string
+): string | null {
+  const items = analysis.movements.filter((m) => m.source === source);
+  if (items.length === 0) return null;
+  const capped = items.slice(0, MOVEMENTS_CAP);
+  const lines: string[] = [`<b>${heading}</b>`];
+  for (const m of capped) lines.push(formatMovementLine(m));
+  if (items.length > MOVEMENTS_CAP) {
+    lines.push(`… ещё ${items.length - MOVEMENTS_CAP} (см. xlsx)`);
   }
-  const head = `<b>Движения цен</b>`;
-  const items = analysis.movements.slice(0, MOVEMENTS_CAP);
-  const lines: string[] = [head];
-  for (const m of items) {
-    const priceFromStr = m.priceFrom !== null ? fmtNumber(m.priceFrom, 0) : "?";
-    const priceToStr = fmtNumber(m.priceTo, 0);
-    const deltaAbsStr = signed(m.deltaAbs, 0);
-    const deltaPctStr = m.deltaPct !== null ? `, ${signed(m.deltaPct, 1)}%` : "";
+  return lines.join("\n");
+}
+
+function buildBirzhaMovementsBlock(analysis: AnalysisResult): string | null {
+  if (!analysis.available.birzha_prices) return null;
+  return (
+    buildMovementsBySource(
+      analysis,
+      "birzha",
+      "Изменение цен за неделю (биржа)"
+    ) ?? "<b>Изменение цен за неделю (биржа)</b>\nЦены не изменились."
+  );
+}
+
+function buildFcaMovementsBlock(analysis: AnalysisResult): string | null {
+  if (!analysis.available.fca_sellers) return null;
+  return (
+    buildMovementsBySource(
+      analysis,
+      "fca",
+      "Сравнение продавцов (FCA, неделя→неделя)"
+    ) ?? "<b>Сравнение продавцов (FCA)</b>\nЦены продавцов не изменились."
+  );
+}
+
+function buildBitumPriceMovementsBlock(
+  analysis: AnalysisResult
+): string | null {
+  if (!analysis.available.bitum_price_new) return null;
+  return (
+    buildMovementsBySource(
+      analysis,
+      "bitum_price_new",
+      "Сводная (Битум прайс)"
+    ) ?? "<b>Сводная (Битум прайс)</b>\nИзменений не зафиксировано."
+  );
+}
+
+function buildCrossCheckDeltaBlock(
+  analysis: AnalysisResult
+): string | null {
+  if (analysis.crossCheckDelta.length === 0) return null;
+  const lines: string[] = [
+    `<b>Расхождения дельт</b> (наша Δ из биржи vs Δ из «Битум прайс»):`,
+  ];
+  for (const c of analysis.crossCheckDelta) {
+    const ours = signed(c.ourDelta, 0);
+    const decl = signed(c.declaredDelta, 0);
+    const diff = signed(c.diff, 0);
+    const marker = c.diff === 0 ? "✓" : "⚠️";
     lines.push(
-      `• <b>${escapeHtml(m.refineryCanonical)}</b> (${sourceLabel(m.source)}): ${priceFromStr} → ${priceToStr} ₽ (Δ ${deltaAbsStr} ₽${deltaPctStr})`
-    );
-  }
-  if (analysis.movements.length > MOVEMENTS_CAP) {
-    lines.push(
-      `… ещё ${analysis.movements.length - MOVEMENTS_CAP} движений (см. xlsx)`
+      `${marker} ${escapeHtml(c.refineryCanonical)}: биржа Δ ${ours} ₽ vs Битум прайс Δ ${decl} ₽ (расхождение ${diff} ₽)`
     );
   }
   return lines.join("\n");
@@ -173,7 +216,7 @@ export function buildReport(
     traces.push({
       fileType: "birzha_volumes",
       sheet: "Chart data",
-      cellRange: "B4:T?",
+      cellRange: "C2:T?",
       numbersCount: cnt,
     });
   }
@@ -182,7 +225,7 @@ export function buildReport(
     traces.push({
       fileType: "birzha_prices",
       sheet: "Chart data",
-      cellRange: "B4:T?",
+      cellRange: "B2:T?",
       numbersCount: cnt,
     });
   }
@@ -191,7 +234,7 @@ export function buildReport(
     traces.push({
       fileType: "fca_sellers",
       sheet: "Chart data",
-      cellRange: "A4:E?",
+      cellRange: "A2:D?",
       numbersCount: cnt,
     });
   }
@@ -212,8 +255,14 @@ export function buildReport(
     buildManualNumbersBlock(manualNumbers),
     buildPartialRenderBlock(analysis),
     buildVolumesBlock(analysis),
-    buildMovementsBlock(analysis),
-    buildCrossCheckBlock(analysis),
+    buildBirzhaMovementsBlock(analysis),
+    buildFcaMovementsBlock(analysis),
+    buildBitumPriceMovementsBlock(analysis),
+    buildCrossCheckDeltaBlock(analysis),
+    // Старый price-based cross-check (по ценам) больше не показываем —
+    // delta cross-check выше даёт более сфокусированную картину расхождений
+    // и именно то, что просил заказчик («сравнение нашей дельты с сводной»).
+    // Данные остаются в AnalysisResult.crossCheck для возможного будущего использования.
     buildTraceFooter(analysis, traces),
   ];
   const html = blocks.filter((b): b is string => Boolean(b)).join("\n\n");
