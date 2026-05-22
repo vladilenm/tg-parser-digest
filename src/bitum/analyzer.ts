@@ -14,11 +14,14 @@ import type {
   CrossCheckDeltaIssue,
   CrossCheckIssue,
   ParsedByType,
+  ParsedBitumPriceNewRow,
   ParsedFcaRow,
   ParsedPriceRow,
   ParsedVolumeRow,
   PriceMovement,
   VolumeAggregate,
+  WeeklyAverageEntry,
+  WeeklyAverages,
 } from "./types.js";
 
 export interface AnalyzeOptions {
@@ -186,6 +189,7 @@ function movementsFromBitumPrice(
   if (!rows || rows.length === 0) return [];
   const out: PriceMovement[] = [];
   for (const r of rows) {
+    if (r.priceRub === null) continue; // PBV-only row — для movements БНД не подходит
     if (r.deltaWeek === 0) continue;
     const priceFrom = r.priceRub - r.deltaWeek;
     const priceTo = r.priceRub;
@@ -239,6 +243,7 @@ function crossCheck(
     }
   }
   for (const r of parsed.bitum_price_new) {
+    if (r.priceRub === null) continue;
     const bp = r.priceRub;
     const lb = lastBirzha.get(r.refineryCanonical);
     if (lb !== undefined && lb > 0) {
@@ -299,6 +304,7 @@ function crossCheckDelta(parsed: ParsedByType): CrossCheckDeltaIssue[] {
   // суммировать дельты нельзя, возьмём первую non-zero, иначе первую.
   const declaredByRef = new Map<string, { priceTo: number; delta: number }>();
   for (const r of parsed.bitum_price_new) {
+    if (r.priceRub === null) continue; // PBV-only row пропускаем
     const cur = declaredByRef.get(r.refineryCanonical);
     if (!cur || (cur.delta === 0 && r.deltaWeek !== 0)) {
       declaredByRef.set(r.refineryCanonical, {
@@ -323,6 +329,54 @@ function crossCheckDelta(parsed: ParsedByType): CrossCheckDeltaIssue[] {
   // Sort by |diff| desc для удобства просмотра.
   out.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
   return out;
+}
+
+/**
+ * Средние цены БНД и ПБВ за неделю из bitum_price_new.
+ * avgRub = mean текущей колонки цен; prevAvgRub = mean (price - deltaWeek)
+ * по тем же строкам. deltaAbs = avgRub - prevAvgRub. % = деление на prev.
+ */
+function computeWeeklyAverages(
+  rows: ParsedBitumPriceNewRow[] | null
+): WeeklyAverages | undefined {
+  if (!rows || rows.length === 0) return undefined;
+  const latestDate = rows
+    .map((r) => r.date)
+    .sort()
+    .at(-1);
+  if (!latestDate) return undefined;
+  const meanEntry = (
+    sample: { price: number; delta: number }[]
+  ): WeeklyAverageEntry | undefined => {
+    if (sample.length === 0) return undefined;
+    const avg = sample.reduce((a, b) => a + b.price, 0) / sample.length;
+    const prev =
+      sample.reduce((a, b) => a + (b.price - b.delta), 0) / sample.length;
+    const deltaAbs = avg - prev;
+    const deltaPct = prev > 0 ? (deltaAbs / prev) * 100 : null;
+    return {
+      avgRub: avg,
+      prevAvgRub: prev,
+      deltaAbs,
+      deltaPct,
+      sampleCount: sample.length,
+    };
+  };
+  const bndSample: { price: number; delta: number }[] = [];
+  const pbvSample: { price: number; delta: number }[] = [];
+  for (const r of rows) {
+    if (r.priceRub !== null) {
+      bndSample.push({ price: r.priceRub, delta: r.deltaWeek });
+    }
+    if (r.pricePbvRub !== null) {
+      pbvSample.push({ price: r.pricePbvRub, delta: r.deltaPbvWeek });
+    }
+  }
+  return {
+    date: latestDate,
+    bnd: meanEntry(bndSample),
+    pbv: meanEntry(pbvSample),
+  };
 }
 
 export function analyzeBitum(
@@ -381,9 +435,11 @@ export function analyzeBitum(
       to: fcaDates[fcaDates.length - 1],
     };
   }
+  const weeklyAverages = computeWeeklyAverages(parsed.bitum_price_new);
   return {
     period,
     fcaDateRange,
+    weeklyAverages,
     volumes,
     movements,
     crossCheck: cc,

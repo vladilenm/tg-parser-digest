@@ -58,6 +58,24 @@ function fmtDateRuShort(iso: string): string {
   return `${day} ${month}`;
 }
 
+function fmtDateRuFull(iso: string): string {
+  // ISO "YYYY-MM-DD" → "DD месяца YYYY" (родительный падеж + год).
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const day = Number(m[3]);
+  const month = RU_MONTH_GEN[m[2]];
+  if (!month) return iso;
+  return `${day} ${month} ${m[1]}`;
+}
+
+function fmtPctRu(n: number, decimals = 1): string {
+  // RU-локаль: десятичный разделитель — запятая. signed (+/−) с U+2212 для negative.
+  const abs = Math.abs(n).toFixed(decimals).replace(".", ",");
+  if (n > 0) return `+${abs}`;
+  if (n < 0) return `−${abs}`;
+  return "0";
+}
+
 function signed(n: number, decimals = 0): string {
   if (n > 0) return `+${n.toFixed(decimals)}`;
   if (n < 0) return `−${Math.abs(n).toFixed(decimals)}`; // U+2212
@@ -73,6 +91,34 @@ function buildPeriodHeader(analysis: AnalysisResult): string {
     return `<b>Битумный отчёт</b> (период не определён)`;
   }
   return `<b>Битумный отчёт ${fmtDateRu(analysis.period.from)} – ${fmtDateRu(analysis.period.to)}</b>`;
+}
+
+function buildWeeklyAveragesBlock(
+  analysis: AnalysisResult
+): string | null {
+  const wa = analysis.weeklyAverages;
+  if (!wa || (!wa.bnd && !wa.pbv)) return null;
+  const dateText = fmtDateRuFull(wa.date);
+  const lines: string[] = [];
+  if (wa.bnd) {
+    const avg = wa.bnd.avgRub.toFixed(0);
+    const dAbs = signed(wa.bnd.deltaAbs, 0);
+    const dPct =
+      wa.bnd.deltaPct !== null ? `, ${fmtPctRu(wa.bnd.deltaPct, 1)}% за неделю` : "";
+    lines.push(
+      `на дату ${dateText} средняя цена <b>БНД</b> составила ${avg} ₽/т (${dAbs} ₽${dPct})`
+    );
+  }
+  if (wa.pbv) {
+    const avg = wa.pbv.avgRub.toFixed(0);
+    const dAbs = signed(wa.pbv.deltaAbs, 0);
+    const dPct =
+      wa.pbv.deltaPct !== null ? `, ${fmtPctRu(wa.pbv.deltaPct, 1)}% за неделю` : "";
+    lines.push(
+      `средняя цена <b>ПБВ</b> составила ${avg} ₽/т (${dAbs} ₽${dPct})`
+    );
+  }
+  return lines.join("\n");
 }
 
 function buildManualNumbersBlock(manualNumbers: ManualNumber[]): string | null {
@@ -316,6 +362,7 @@ export function buildReport(
 
   const blocks: (string | null)[] = [
     buildPeriodHeader(analysis),
+    buildWeeklyAveragesBlock(analysis),
     buildManualNumbersBlock(manualNumbers),
     buildPartialRenderBlock(analysis),
     birzhaChannel,

@@ -31,14 +31,18 @@ const COL_REFINERY = 2; // B (Пункт отгрузки)
 const COL_COMPANY = 3; // C
 const COL_PRICE_BND = 6; // F (БНД - Цена недели)
 const COL_DELTA_BND = 7; // G (БНД - Изменение)
+const COL_PRICE_PBV = 8; // H (ПБВ - Цена недели)
+const COL_DELTA_PBV = 9; // I (ПБВ - Изменение)
 
 const RowSchema = z.object({
   date: z.string().min(8),
   refineryCanonical: z.string(),
   refineryRaw: z.string(),
   company: z.string(),
-  priceRub: z.number().nonnegative(),
+  priceRub: z.number().nonnegative().nullable(),
   deltaWeek: z.number(),
+  pricePbvRub: z.number().nonnegative().nullable(),
+  deltaPbvWeek: z.number(),
 });
 
 /**
@@ -122,22 +126,23 @@ export async function parseBitumPriceNew(
         continue;
       }
       const company = cellString(dataRow.getCell(COL_COMPANY));
-      const priceStr = cellString(dataRow.getCell(COL_PRICE_BND));
-      const price = parsePrice(priceStr);
-      if (price === null) {
-        // Возможно row только про ПБВ (БНД отсутствует) — пропускаем без ошибки.
-        continue;
-      }
-      const deltaStr = cellString(dataRow.getCell(COL_DELTA_BND));
-      const delta = parseDelta(deltaStr);
+      const priceBnd = parsePrice(cellString(dataRow.getCell(COL_PRICE_BND)));
+      const deltaBnd = parseDelta(cellString(dataRow.getCell(COL_DELTA_BND)));
+      const pricePbv = parsePrice(cellString(dataRow.getCell(COL_PRICE_PBV)));
+      const deltaPbv = parseDelta(cellString(dataRow.getCell(COL_DELTA_PBV)));
+      // Пропускаем только если ОБЕИХ цен нет (БНД и ПБВ) — раньше скипали
+      // ПБВ-only строки, что ломало расчёт средней ПБВ за неделю.
+      if (priceBnd === null && pricePbv === null) continue;
       const norm = normalizeRefinery(refineryRaw, dict);
       const candidate: ParsedBitumPriceNewRow = {
         date: dateIso,
         refineryCanonical: norm.canonical,
         refineryRaw,
         company,
-        priceRub: price,
-        deltaWeek: delta,
+        priceRub: priceBnd,
+        deltaWeek: deltaBnd,
+        pricePbvRub: pricePbv,
+        deltaPbvWeek: deltaPbv,
       };
       const parsed = RowSchema.safeParse(candidate);
       if (!parsed.success) {

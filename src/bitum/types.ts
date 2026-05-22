@@ -73,8 +73,25 @@ export interface ParsedBitumPriceNewRow {
   refineryCanonical: string;
   refineryRaw: string;
   company: string; // прямо из xlsx-колонки, не lookup
-  priceRub: number; // F-колонка
-  deltaWeek: number; // G-колонка
+  priceRub: number | null; // F-колонка (БНД); null если строка только про ПБВ
+  deltaWeek: number; // G-колонка (БНД)
+  pricePbvRub: number | null; // H-колонка (ПБВ)
+  deltaPbvWeek: number; // I-колонка (ПБВ)
+}
+
+// Средние цены БНД и ПБВ за неделю — для блока «вначале» в дайджесте.
+// avgRub = mean текущей колонки price; prevAvgRub = mean (price - deltaWeek).
+export interface WeeklyAverages {
+  date: string; // ISO — последняя дата периода
+  bnd?: WeeklyAverageEntry;
+  pbv?: WeeklyAverageEntry;
+}
+export interface WeeklyAverageEntry {
+  avgRub: number;
+  prevAvgRub: number;
+  deltaAbs: number; // avgRub - prevAvgRub
+  deltaPct: number | null;
+  sampleCount: number;
 }
 
 export type ParsedByType = {
@@ -138,6 +155,7 @@ export interface VolumeAggregate {
 export interface AnalysisResult {
   period: { from: string; to: string }; // ISO даты — min/max across all sources
   fcaDateRange?: { from: string; to: string }; // ISO; для FCA channel header
+  weeklyAverages?: WeeklyAverages; // средние цены БНД/ПБВ — paragraph «вначале»
   volumes: { totalT: number; byRefinery: VolumeAggregate[] };
   movements: PriceMovement[]; // sources sorted: birzha по volume rank, fca/bpn по |Δ| desc
   crossCheck: CrossCheckIssue[];
