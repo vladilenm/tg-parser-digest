@@ -167,8 +167,9 @@ function buildMovementsBySource(
   return lines.join("\n");
 }
 
-// Cap для биржевых движений = 10 (заказчик 2026-05-22 «давайте сделаем для топ-10»).
-const BIRZHA_CAP = 10;
+// Cap для биржи и FCA = 10 (заказчик 2026-05-22 «топ-10» для биржи,
+// 2026-05-24 «цены прайс может тоже сделать топ-10»).
+const DISPLAY_CAP = 10;
 
 function buildBirzhaMovementsBlock(analysis: AnalysisResult): string | null {
   if (!analysis.available.birzha_prices) return null;
@@ -177,7 +178,7 @@ function buildBirzhaMovementsBlock(analysis: AnalysisResult): string | null {
       analysis,
       "birzha",
       "Изменение цен за неделю (биржа)",
-      BIRZHA_CAP
+      DISPLAY_CAP
     ) ?? "<b>Изменение цен за неделю (биржа)</b>\nЦены не изменились."
   );
 }
@@ -189,7 +190,7 @@ function buildBirzhaMovementsBlock(analysis: AnalysisResult): string | null {
 function buildFcaMovementsBlock(analysis: AnalysisResult): string | null {
   if (!analysis.available.fca_sellers) return null;
   return (
-    buildMovementsBySource(analysis, "fca", null) ??
+    buildMovementsBySource(analysis, "fca", null, DISPLAY_CAP) ??
     "Цены продавцов не изменились."
   );
 }
