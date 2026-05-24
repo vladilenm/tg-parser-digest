@@ -199,6 +199,11 @@ function buildBirzhaCombinedBlock(
 }
 
 function formatMovementLine(m: PriceMovement): string {
+  // Δ = 0 → priority-сёр без изменений цены (только в FCA после фильтра
+  // 2026-05-24). Чтобы не показывать ugly «(Δ 0 ₽, 0%)» — короткая форма.
+  if (m.deltaAbs === 0) {
+    return `• <b>${escapeHtml(m.refineryCanonical)}</b>: ${fmtNumber(m.priceTo, 0)} ₽ (без изменений)`;
+  }
   const priceFromStr = m.priceFrom !== null ? fmtNumber(m.priceFrom, 0) : "?";
   const priceToStr = fmtNumber(m.priceTo, 0);
   const deltaAbsStr = signed(m.deltaAbs, 0);

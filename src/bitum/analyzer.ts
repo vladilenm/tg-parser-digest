@@ -128,17 +128,26 @@ function movementsFromBirzhaPrices(
 }
 
 /**
- * Из fca_sellers строит movements группировкой по pointOfShipment:
- *   - ≥2 даты → priceFrom = первая, priceTo = последняя, Δ = priceTo - priceFrom
- *   - singletons → skip (продавец только в одной дате)
- *   - Δ == 0 → skip (цена не изменилась)
- * (источник не содержит Δ-колонки, всё считаем сами).
+ * Из fca_sellers строит movements группировкой по pointOfShipment.
+ *
+ * Правила фильтрации (заказчик 2026-05-24):
+ *   1. Singletons (продавец только в одной дате) — всегда skip.
+ *   2. Если файл содержит колонку «в отчет» (хотя бы одна строка priority > 0):
+ *      - Показываем ТОЛЬКО priority продавцов (priority > 0)
+ *      - Включая случай Δ = 0 (заказчик: «упорно не хочет Ярославль указывать»
+ *        — у Ярославля одинаковая цена обе недели, но он priority → должен быть)
+ *      - Non-priority продавцов (Профнефтересурс и т.п.) полностью скрываем
+ *   3. Если priority колонки в файле нет (backward-compat) — старое поведение:
+ *      все продавцы с Δ != 0.
  */
 function movementsFromFca(
   rows: ParsedFcaRow[] | null,
   sheetName: string
 ): PriceMovement[] {
   if (!rows || rows.length === 0) return [];
+  const fileHasPriority = rows.some(
+    (r) => r.priority !== undefined && r.priority > 0
+  );
   const byPoint = new Map<string, ParsedFcaRow[]>();
   for (const r of rows) {
     const key = r.pointOfShipment;
@@ -148,20 +157,33 @@ function movementsFromFca(
   }
   const out: PriceMovement[] = [];
   for (const [, arr] of byPoint) {
-    if (arr.length < 2) continue; // singleton — продавец встречается один раз
+    if (arr.length < 2) continue; // singleton
     arr.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     const first = arr[0];
     const last = arr[arr.length - 1];
     const deltaAbs = last.priceRub - first.priceRub;
-    if (deltaAbs === 0) continue;
-    const deltaPct = first.priceRub > 0 ? (deltaAbs / first.priceRub) * 100 : null;
-    // Priority: max по строкам этого продавца (col E «в отчет» из xlsx).
+    // Priority: max по строкам этого продавца.
     let priority: number | undefined = undefined;
     for (const r of arr) {
-      if (r.priority !== undefined && (priority === undefined || r.priority > priority)) {
+      if (
+        r.priority !== undefined &&
+        (priority === undefined || r.priority > priority)
+      ) {
         priority = r.priority;
       }
     }
+    // Apply filtering rules:
+    if (fileHasPriority) {
+      // Strict mode: только priority-сёра, включая delta=0.
+      if (priority === undefined || priority <= 0) continue;
+    } else {
+      // Legacy: показываем всех с Δ != 0.
+      if (deltaAbs === 0) continue;
+    }
+    const deltaPct =
+      first.priceRub > 0 && deltaAbs !== 0
+        ? (deltaAbs / first.priceRub) * 100
+        : null;
     out.push({
       refineryCanonical: last.refineryCanonical,
       refineryRaw: last.refineryRaw,
