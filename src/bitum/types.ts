@@ -66,6 +66,9 @@ export interface ParsedFcaRow {
   pointOfShipment: string;
   priceRub: number;
   deltaWeek: number; // E-D (формула из rev), может быть 0
+  // col E «в отчет» — приоритет продавца в выдаче (заказчик 2026-05-24).
+  // > 0 → приоритетный (показывается выше); undefined / 0 → обычный.
+  priority?: number;
 }
 
 export interface ParsedBitumPriceNewRow {
@@ -124,6 +127,9 @@ export interface PriceMovement {
   source: "birzha" | "fca" | "bitum_price_new";
   // Cell-trace для каждого числа (D-12 §7).
   trace: { fileType: BitumType; sheet: string; cell: string }[];
+  // Используется для FCA — приоритет продавца (max по строкам seller'а в col E).
+  // Сортировка FCA: priority desc, потом |Δ| desc.
+  priority?: number;
 }
 
 export interface CrossCheckIssue {

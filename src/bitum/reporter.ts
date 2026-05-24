@@ -345,7 +345,7 @@ export function buildReport(
     traces.push({
       fileType: "fca_sellers",
       sheet: "Chart data",
-      cellRange: "A2:D?",
+      cellRange: "A2:E?",
       numbersCount: cnt,
     });
   }

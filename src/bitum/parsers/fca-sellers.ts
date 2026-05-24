@@ -29,6 +29,8 @@ const COL_DATE = 1; // A
 const COL_REGION = 2; // B
 const COL_REFINERY = 3; // C (Пункт отгрузки)
 const COL_PRICE = 4; // D (БНД, руб/т)
+const COL_PRIORITY = 5; // E «в отчет» — приоритет продавца (заказчик 2026-05-24).
+                       // Optional колонка, файл может быть и без неё (backward-compat).
 
 const RowSchema = z.object({
   date: z.string().min(8),
@@ -38,6 +40,7 @@ const RowSchema = z.object({
   pointOfShipment: z.string(),
   priceRub: z.number().nonnegative(),
   deltaWeek: z.number(), // 0 в источнике; реальная Δ считается в analyzer
+  priority: z.number().nonnegative().optional(),
 });
 
 export async function parseFcaSellers(
@@ -87,6 +90,11 @@ export async function parseFcaSellers(
         continue;
       }
       const norm = normalizeRefinery(refineryRaw, dict);
+      // col E «в отчет» — если есть положительное число → priority.
+      // Пустая ячейка / 0 / нечисло → undefined.
+      const priorityRaw = cellNumber(dataRow.getCell(COL_PRIORITY));
+      const priority =
+        priorityRaw !== null && priorityRaw > 0 ? priorityRaw : undefined;
       const candidate: ParsedFcaRow = {
         date: dateIso,
         refineryCanonical: norm.canonical,
@@ -95,6 +103,7 @@ export async function parseFcaSellers(
         pointOfShipment: refineryRaw,
         priceRub: price,
         deltaWeek: 0, // считается на уровне analyzer'a из группировки по pointOfShipment
+        priority,
       };
       const parsed = RowSchema.safeParse(candidate);
       if (!parsed.success) {
@@ -107,7 +116,7 @@ export async function parseFcaSellers(
       rows.push(parsed.data);
       lastDataRow = r;
     }
-    cellRange = `A${HEADER_ROW + 1}:D${lastDataRow}`;
+    cellRange = `A${HEADER_ROW + 1}:E${lastDataRow}`;
   } catch (err) {
     errors.push({ rowNum: 0, reason: (err as Error).message });
   }

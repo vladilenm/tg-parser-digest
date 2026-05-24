@@ -155,6 +155,13 @@ function movementsFromFca(
     const deltaAbs = last.priceRub - first.priceRub;
     if (deltaAbs === 0) continue;
     const deltaPct = first.priceRub > 0 ? (deltaAbs / first.priceRub) * 100 : null;
+    // Priority: max по строкам этого продавца (col E «в отчет» из xlsx).
+    let priority: number | undefined = undefined;
+    for (const r of arr) {
+      if (r.priority !== undefined && (priority === undefined || r.priority > priority)) {
+        priority = r.priority;
+      }
+    }
     out.push({
       refineryCanonical: last.refineryCanonical,
       refineryRaw: last.refineryRaw,
@@ -170,6 +177,7 @@ function movementsFromFca(
           cell: `${first.date}→${last.date}`,
         },
       ],
+      priority,
     });
   }
   return out;
@@ -401,13 +409,24 @@ export function analyzeBitum(
     if (db !== da) return db - da;
     return a.refineryCanonical < b.refineryCanonical ? -1 : 1;
   };
+  // FCA: приоритетные (col E «в отчет» > 0) идут первыми; внутри каждой группы
+  // — по |Δ| desc (заказчик 2026-05-24).
+  const sortFcaByPriorityThenDelta = (
+    a: PriceMovement,
+    b: PriceMovement
+  ): number => {
+    const pa = a.priority ?? 0;
+    const pb = b.priority ?? 0;
+    if (pb !== pa) return pb - pa;
+    return sortByDeltaDesc(a, b);
+  };
   const birzhaMovs = movementsFromBirzhaPrices(
     parsed.birzha_prices,
     "birzha_prices"
   );
   birzhaMovs.sort(sortByVolumeRank);
   const fcaMovs = movementsFromFca(parsed.fca_sellers, "fca_sellers");
-  fcaMovs.sort(sortByDeltaDesc);
+  fcaMovs.sort(sortFcaByPriorityThenDelta);
   const bpnMovs = movementsFromBitumPrice(
     parsed.bitum_price_new,
     "bitum_price_new"
