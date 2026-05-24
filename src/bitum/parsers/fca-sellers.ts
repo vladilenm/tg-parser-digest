@@ -29,8 +29,12 @@ const COL_DATE = 1; // A
 const COL_REGION = 2; // B
 const COL_REFINERY = 3; // C (Пункт отгрузки)
 const COL_PRICE = 4; // D (БНД, руб/т)
-const COL_PRIORITY = 5; // E «в отчет» — приоритет продавца (заказчик 2026-05-24).
-                       // Optional колонка, файл может быть и без неё (backward-compat).
+// Колонка «в отчет» ищется ДИНАМИЧЕСКИ по заголовку — заказчик 2026-05-24
+// присылал файл где col E пустая, а «в отчет» в col F (иногда возникает
+// пустая колонка между БНД и priority). Поиск по тексту устойчив к таким
+// сдвигам. Optional — если заголовок не найден, priority undefined.
+const PRIORITY_HEADER_RE = /в\s*отч[её]т/i;
+const PRIORITY_SEARCH_MAX_COL = 20; // защитный потолок
 
 const RowSchema = z.object({
   date: z.string().min(8),
@@ -67,6 +71,19 @@ export async function parseFcaSellers(
         },
       };
     }
+    // Динамический поиск колонки «в отчет» по заголовку — в реальных файлах
+    // оператора между БНД (col D) и приоритетом может быть пустая колонка,
+    // т.е. «в отчет» сидит в col F, а не E. Ищем по regex в HEADER_ROW.
+    const headerRow = sheet.getRow(HEADER_ROW);
+    let priorityCol: number | null = null;
+    for (let c = COL_PRICE + 1; c <= PRIORITY_SEARCH_MAX_COL; c++) {
+      const text = cellString(headerRow.getCell(c));
+      if (text && PRIORITY_HEADER_RE.test(text)) {
+        priorityCol = c;
+        break;
+      }
+    }
+
     let lastDataRow = HEADER_ROW;
     for (let r = HEADER_ROW + 1; r <= rowCount; r++) {
       const dataRow = sheet.getRow(r);
@@ -90,9 +107,11 @@ export async function parseFcaSellers(
         continue;
       }
       const norm = normalizeRefinery(refineryRaw, dict);
-      // col E «в отчет» — если есть положительное число → priority.
-      // Пустая ячейка / 0 / нечисло → undefined.
-      const priorityRaw = cellNumber(dataRow.getCell(COL_PRIORITY));
+      // Priority из динамически найденной колонки «в отчет». Если колонки нет
+      // в файле — priority всегда undefined (backward-compat). Если есть, но
+      // ячейка пустая / 0 / нечисло — undefined для этой строки.
+      const priorityRaw =
+        priorityCol !== null ? cellNumber(dataRow.getCell(priorityCol)) : null;
       const priority =
         priorityRaw !== null && priorityRaw > 0 ? priorityRaw : undefined;
       const candidate: ParsedFcaRow = {
