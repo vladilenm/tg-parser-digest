@@ -121,22 +121,74 @@ function buildPartialRenderBlock(analysis: AnalysisResult): string | null {
   return `⚠️ Доступно ${presentTypes.length}/4 типов: ${escapeHtml(presentLabels || "—")}. Отсутствуют: ${escapeHtml(missingLabels || "—")}.`;
 }
 
-function buildVolumesBlock(analysis: AnalysisResult): string | null {
-  if (!analysis.available.birzha_volumes) return null;
-  if (analysis.volumes.byRefinery.length === 0) {
-    return `<b>Объёмы продаж на бирже</b>\nДанных нет.`;
+/**
+ * Объёмы биржи + изменения цен биржи в одном разделе, по НПЗ (заказчик 2026-05-24).
+ * Раньше было два блока: «Объёмы продаж на бирже» (топ-10 объёмов) +
+ * «Изменение цен за неделю (биржа)» (топ-10 движений). Теперь — один:
+ *   • {НПЗ}: {объём} тыс.т, {priceFrom} → {priceTo} ₽ (Δ {abs} ₽, {pct}%)
+ * Если у НПЗ есть объём но нет ценового движения (Δ=0 или нет данных по
+ * birzha_prices), показываем только объём. Если у НПЗ есть движение цены
+ * но нет объёма (редко) — выводим отдельным под-блоком «Без объёма».
+ * Без топ-10 cap (показываем ВСЁ).
+ */
+function buildBirzhaCombinedBlock(
+  analysis: AnalysisResult
+): string | null {
+  if (!analysis.available.birzha_volumes && !analysis.available.birzha_prices) {
+    return null;
   }
-  const totalKt = analysis.volumes.totalT / 1000;
-  const lines: string[] = [
-    `<b>Объёмы продаж на бирже</b>`,
-    `Сумма за период: ${fmtNumber(totalKt, 2)} тыс.т`,
-    `Топ-${analysis.volumes.byRefinery.length}:`,
-  ];
-  for (const v of analysis.volumes.byRefinery) {
-    const kt = v.sumT / 1000;
-    lines.push(
-      `• ${escapeHtml(v.refineryCanonical)}: ${fmtNumber(kt, 2)} тыс.т`
-    );
+  const lines: string[] = [`<b>Объёмы продаж на бирже</b>`];
+  // Sum total: из col B (sum по датам, см. analyzer.aggregateVolumes).
+  if (analysis.available.birzha_volumes) {
+    const totalKt = analysis.volumes.totalT / 1000;
+    lines.push(`Сумма за период: ${fmtNumber(totalKt, 2)} тыс.т`);
+  }
+  // Lookup ценовых движений per НПЗ для join.
+  const birzhaMovs = analysis.movements.filter((m) => m.source === "birzha");
+  const priceByRefinery = new Map<string, PriceMovement>();
+  for (const m of birzhaMovs) priceByRefinery.set(m.refineryCanonical, m);
+
+  const renderPriceTail = (m: PriceMovement): string => {
+    const pFrom = m.priceFrom !== null ? fmtNumber(m.priceFrom, 0) : "?";
+    const pTo = fmtNumber(m.priceTo, 0);
+    const dAbs = signed(m.deltaAbs, 0);
+    const dPct = m.deltaPct !== null ? `, ${signed(m.deltaPct, 1)}%` : "";
+    return `${pFrom} → ${pTo} ₽ (Δ ${dAbs} ₽${dPct})`;
+  };
+
+  const seenInVolumes = new Set<string>();
+  if (analysis.volumes.byRefinery.length > 0) {
+    lines.push(""); // пустая строка между шапкой и bullets
+    for (const v of analysis.volumes.byRefinery) {
+      seenInVolumes.add(v.refineryCanonical);
+      const kt = v.sumT / 1000;
+      const m = priceByRefinery.get(v.refineryCanonical);
+      const tail = m ? `, ${renderPriceTail(m)}` : "";
+      lines.push(
+        `• <b>${escapeHtml(v.refineryCanonical)}</b>: ${fmtNumber(kt, 2)} тыс.т${tail}`
+      );
+    }
+  } else if (!analysis.available.birzha_volumes) {
+    // Объёмы вообще не загружены — показываем только movements.
+    lines.push("");
+    for (const m of birzhaMovs) {
+      seenInVolumes.add(m.refineryCanonical);
+      lines.push(`• <b>${escapeHtml(m.refineryCanonical)}</b>: ${renderPriceTail(m)}`);
+    }
+  } else {
+    lines.push("Данных нет.");
+  }
+
+  // Price-only НПЗ — в movements есть, но в volumes отсутствуют.
+  const priceOnly = birzhaMovs.filter(
+    (m) => !seenInVolumes.has(m.refineryCanonical)
+  );
+  if (priceOnly.length > 0) {
+    lines.push("");
+    lines.push("<i>Без объёма (только цены):</i>");
+    for (const m of priceOnly) {
+      lines.push(`• <b>${escapeHtml(m.refineryCanonical)}</b>: ${renderPriceTail(m)}`);
+    }
   }
   return lines.join("\n");
 }
@@ -167,21 +219,10 @@ function buildMovementsBySource(
   return lines.join("\n");
 }
 
-// Cap для биржи и FCA = 10 (заказчик 2026-05-22 «топ-10» для биржи,
-// 2026-05-24 «цены прайс может тоже сделать топ-10»).
+// Cap для FCA = 10 (заказчик 2026-05-24 «цены прайс может тоже сделать топ-10»).
+// Биржевые движения теперь рендерятся в buildBirzhaCombinedBlock без cap
+// (заказчик 2026-05-24 «не ограничивать топ 10 а вывести все»).
 const DISPLAY_CAP = 10;
-
-function buildBirzhaMovementsBlock(analysis: AnalysisResult): string | null {
-  if (!analysis.available.birzha_prices) return null;
-  return (
-    buildMovementsBySource(
-      analysis,
-      "birzha",
-      "Изменение цен за неделю (биржа)",
-      DISPLAY_CAP
-    ) ?? "<b>Изменение цен за неделю (биржа)</b>\nЦены не изменились."
-  );
-}
 
 /**
  * FCA: возвращает ТОЛЬКО bullets (без inner heading) — channel header сам
@@ -321,11 +362,12 @@ export function buildReport(
   }
 
   // Группировка по «каналам продаж» (заказчик 2026-05-22):
-  // канал «Биржа» = объёмы + цены биржи; канал «Цены прайс (FCA)» = только цены;
+  // канал «Биржа» = объёмы + цены биржи объединены в один список (по сообщению
+  // 2026-05-24 «сократим текст и можно будет не ограничивать топ 10 а вывести все»);
+  // канал «Цены прайс (FCA)» = только цены;
   // «Битум прайс» — reference (сводная) + расхождения дельт.
   const birzhaChannel = buildChannelBlock("Биржевой канал", [
-    buildVolumesBlock(analysis),
-    buildBirzhaMovementsBlock(analysis),
+    buildBirzhaCombinedBlock(analysis),
   ]);
   // FCA channel header включает дату конца периода FCA («Цены прайс (FCA) — 15 мая»).
   const fcaTitle = analysis.fcaDateRange?.to

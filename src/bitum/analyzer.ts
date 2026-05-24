@@ -26,10 +26,7 @@ import type {
 
 export interface AnalyzeOptions {
   thresholdPct: number;
-  volumesTopN?: number;
 }
-
-const DEFAULT_VOLUMES_TOP_N = 10;
 
 function computePeriod(parsed: ParsedByType): { from: string; to: string } {
   const dates: string[] = [];
@@ -51,8 +48,7 @@ function computePeriod(parsed: ParsedByType): { from: string; to: string } {
 }
 
 function aggregateVolumes(
-  rows: ParsedVolumeRow[] | null,
-  topN: number
+  rows: ParsedVolumeRow[] | null
 ): { totalT: number; byRefinery: VolumeAggregate[] } {
   if (!rows || rows.length === 0) return { totalT: 0, byRefinery: [] };
   const acc = new Map<string, VolumeAggregate>();
@@ -81,9 +77,9 @@ function aggregateVolumes(
   // Fallback к сумме per-refinery если col B пустой.
   const fileTotalT = [...fileTotalsByDate.values()].reduce((a, b) => a + b, 0);
   const totalT = fileTotalT > 0 ? fileTotalT : sumOfRefineriesT;
-  const byRefinery = [...acc.values()]
-    .sort((a, b) => b.sumT - a.sumT)
-    .slice(0, topN);
+  // Возвращаем ВСЕ НПЗ (без top-N cap) — заказчик 2026-05-24 «не ограничивать
+  // топ 10 а вывести все». Sort by volume desc.
+  const byRefinery = [...acc.values()].sort((a, b) => b.sumT - a.sumT);
   return { totalT, byRefinery };
 }
 
@@ -385,12 +381,12 @@ export function analyzeBitum(
   options: AnalyzeOptions
 ): AnalysisResult {
   const period = computePeriod(parsed);
-  const topN = options.volumesTopN ?? DEFAULT_VOLUMES_TOP_N;
-  const volumes = aggregateVolumes(parsed.birzha_volumes, topN);
-  // Биржевые движения цен сортируем В ТОЙ ЖЕ ОЧЕРЁДНОСТИ, что и Top-N volumes
+  const volumes = aggregateVolumes(parsed.birzha_volumes);
+  // Биржевые движения цен сортируем В ТОЙ ЖЕ ОЧЕРЁДНОСТИ, что и volumes
   // (по volume rank, не по |Δ|) — требование заказчика 2026-05-22 «давайте
-  // сделаем для топ-10 в той же очерёдности». НПЗ вне Top-N идут после, тоже
-  // отсортированы по volume rank всех данных. FCA и Битум прайс — по |Δ| desc.
+  // сделаем для топ-10 в той же очерёдности». Теперь volumes без cap (2026-05-24)
+  // → rank Map покрывает все НПЗ; non-ranked идут в конец. FCA и Битум прайс —
+  // по |Δ| desc.
   const volumeRank = new Map<string, number>();
   volumes.byRefinery.forEach((v, i) => volumeRank.set(v.refineryCanonical, i));
   const sortByVolumeRank = (a: PriceMovement, b: PriceMovement): number => {
