@@ -275,7 +275,7 @@ function buildCrossCheckDeltaBlock(
 ): string | null {
   if (analysis.crossCheckDelta.length === 0) return null;
   const lines: string[] = [
-    `<b>Расхождения дельт</b> (наша Δ из биржи vs Δ из «Битум прайс»):`,
+    `<b>Расхождения дельт</b> (Δ из биржи vs Δ из «Битум прайс»):`,
   ];
   for (const c of analysis.crossCheckDelta) {
     const ours = signed(c.ourDelta, 0);
