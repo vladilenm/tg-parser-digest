@@ -137,11 +137,16 @@ function buildBirzhaCombinedBlock(
   if (!analysis.available.birzha_volumes && !analysis.available.birzha_prices) {
     return null;
   }
-  const lines: string[] = [`<b>Объёмы продаж на бирже</b>`];
-  // Sum total: из col B (sum по датам, см. analyzer.aggregateVolumes).
+  // Шапка: «Объёмы продаж на бирже (сумма): X тыс.т» одной строкой (заказчик
+  // 2026-05-24). Если объёмов в данных нет — fallback к простому заголовку.
+  const lines: string[] = [];
   if (analysis.available.birzha_volumes) {
     const totalKt = analysis.volumes.totalT / 1000;
-    lines.push(`Сумма за период: ${fmtNumber(totalKt, 2)} тыс.т`);
+    lines.push(
+      `<b>Объёмы продаж на бирже (сумма): ${fmtNumber(totalKt, 2)} тыс.т</b>`
+    );
+  } else {
+    lines.push(`<b>Объёмы продаж на бирже</b>`);
   }
   // Lookup ценовых движений per НПЗ для join.
   const birzhaMovs = analysis.movements.filter((m) => m.source === "birzha");
@@ -219,19 +224,17 @@ function buildMovementsBySource(
   return lines.join("\n");
 }
 
-// Cap для FCA = 10 (заказчик 2026-05-24 «цены прайс может тоже сделать топ-10»).
-// Биржевые движения теперь рендерятся в buildBirzhaCombinedBlock без cap
-// (заказчик 2026-05-24 «не ограничивать топ 10 а вывести все»).
-const DISPLAY_CAP = 10;
-
 /**
  * FCA: возвращает ТОЛЬКО bullets (без inner heading) — channel header сам
  * несёт имя «Цены прайс (FCA) — DD месяц» (заказчик 2026-05-22, screenshot 2).
+ * Без cap — показываем ВСЕ продавцы (заказчик 2026-05-24 «список продолжает
+ * сворачиваться, нужно чтоб показывались все»). Приоритетные идут первыми,
+ * за ними остальные (см. analyzer.sortFcaByPriorityThenDelta).
  */
 function buildFcaMovementsBlock(analysis: AnalysisResult): string | null {
   if (!analysis.available.fca_sellers) return null;
   return (
-    buildMovementsBySource(analysis, "fca", null, DISPLAY_CAP) ??
+    buildMovementsBySource(analysis, "fca", null) ??
     "Цены продавцов не изменились."
   );
 }
