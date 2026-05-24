@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v4.0
-milestone_name: milestone
-status: verifying
+milestone: v5.1
+milestone_name: — simplified bitum, full rewrite)
+status: executing
 stopped_at: Phase 4 context rewritten — simplified bitum scope (4 fixed types, always-ask UX, /bitum_add, flat report, no LLM)
-last_updated: "2026-05-22T05:54:27.125Z"
-last_activity: 2026-05-21
+last_updated: "2026-05-22T06:47:29.882Z"
+last_activity: 2026-05-22 -- Phase 04 execution started
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 1
-  completed_plans: 1
-  percent: 100
+  completed_plans: 0
+  percent: 0
 ---
 
 # State: tg-parser-demo
@@ -30,8 +30,8 @@ See: `.planning/PROJECT.md` (обновлён 2026-05-21)
 
 Phase: 04 (bitum-weekly-report) — EXECUTING
 Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-05-21
+Status: Executing Phase 04
+Last activity: 2026-05-22 -- Phase 04 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
