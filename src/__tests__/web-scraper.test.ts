@@ -12,7 +12,6 @@ import {
   loadWebsites,
   fetchSite,
   composeWebDigest,
-  buildFailedSitesBlock,
 } from "../web-scraper.js";
 import { paths } from "../paths.js";
 
@@ -286,54 +285,3 @@ describe("composeWebDigest (D-12 — contract anchor)", () => {
   });
 });
 
-// =============================================================================
-// buildFailedSitesBlock — quick-260519-k6c + quick-260519-tmc: блок «⚠️ Не удалось распарсить (N)»
-// Контракт: non-empty → блок только с URL (без reason), empty → "", HTML escape для URL.
-// quick-260519-tmc: reason больше не рендерится — остаётся только в типе для совместимости.
-// =============================================================================
-describe("buildFailedSitesBlock (quick-260519-k6c)", () => {
-  it("A: non-empty — возвращает блок с заголовком и URL-only bullets", () => {
-    const failedSites = [
-      { url: "https://a.example/", reason: "HTTP 500" },
-      {
-        url: "https://b.example/news",
-        reason: "fetch failed (cause: UND_ERR_CONNECT_TIMEOUT — Connect Timeout Error)",
-      },
-    ];
-    const result = buildFailedSitesBlock(failedSites);
-    // Блок начинается с двойного \n\n (для отделения от основного HTML)
-    expect(result.startsWith("\n\n")).toBe(true);
-    // Заголовок с правильным счётчиком
-    expect(result).toContain("<b>⚠️ Не удалось распарсить (2)</b>");
-    // Первый bullet — только URL, без reason
-    expect(result).toContain("• <code>https://a.example/</code>");
-    // Второй bullet — только URL, без reason
-    expect(result).toContain("• <code>https://b.example/news</code>");
-    // Счётчик совпадает с длиной массива
-    expect(result).toContain(`(${failedSites.length})`);
-    // quick-260519-tmc: reason нигде не должен утечь в вывод
-    expect(result).not.toContain("— HTTP 500");
-    expect(result).not.toContain("— fetch failed");
-  });
-
-  it("B: empty input — возвращает пустую строку", () => {
-    const result = buildFailedSitesBlock([]);
-    expect(result).toBe("");
-  });
-
-  it("C: HTML escape — url экранируется, reason не рендерится", () => {
-    const failedSites = [
-      {
-        url: "https://x.example/?a=1&b=2",
-        reason: "<script>alert(1)</script>",
-      },
-    ];
-    const result = buildFailedSitesBlock(failedSites);
-    // & в url должен быть экранирован
-    expect(result).toContain("&amp;");
-    expect(result).not.toContain("&b=2");
-    // quick-260519-tmc: reason не рендерится — ни сырым, ни escaped
-    expect(result).not.toContain("<script>");
-    expect(result).not.toContain("&lt;script&gt;");
-  });
-});

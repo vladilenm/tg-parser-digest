@@ -317,25 +317,6 @@ function buildWebHeader(succeeded: number, total: number): string {
 }
 
 // =============================================================================
-// buildFailedSitesBlock — quick-260519-k6c + quick-260519-tmc.
-// Возвращает HTML-блок «⚠️ Не удалось распарсить (N)» для аппенда в конец дайджеста.
-// На вход — failedSites из runWebPipeline (только rejected, НЕ fulfilled-empty).
-// На пустой массив → "" (caller конкатенирует, ничего не появится).
-//
-// quick-260519-tmc: reason больше не рендерится в блоке — остаётся только в типе
-// для совместимости с caller (runWebPipeline всё ещё передаёт reason для логов).
-//
-// EXPORTED — чтобы юнит-тесты зафиксировали контракт (формат блока, escape, empty case).
-// =============================================================================
-export function buildFailedSitesBlock(
-  failedSites: Array<{ url: string; reason: string }>
-): string {
-  if (failedSites.length === 0) return "";
-  const lines = failedSites.map((f) => `• <code>${escapeHtml(f.url)}</code>`);
-  return `\n\n<b>⚠️ Не удалось распарсить (${failedSites.length})</b>\n` + lines.join("\n");
-}
-
-// =============================================================================
 // buildPlaceholderHtml — D-13: technical-fail placeholder.
 // Шлём в канал даже при 0 валидных сайтах, чтобы Заказчик видел «прогон был».
 // 5 пустых секций + блок mentions, симметрично пустой TG-сводке.
@@ -383,7 +364,6 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
   const errors: string[] = [];
-  const failedSites: Array<{ url: string; reason: string }> = [];
 
   const websites = loadWebsites();
   const rssCount = websites.filter((w) => w.rss).length;
@@ -440,7 +420,6 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
       // D-18: no retry — лог уже напечатан внутри map-задачи, тут только counter + errors[].
       const msg = formatErrCause(r.reason);
       errors.push(`${site.url}: ${msg}`);
-      failedSites.push({ url: site.url, reason: msg }); // quick-260519-k6c
       websitesSkipped++;
       continue;
     }
@@ -490,7 +469,7 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
   // quick-260508-juw: only send placeholder when BOTH this run had no successes AND
   // nothing is in the same-day cache (i.e. earlier-run posts can still feed summarize).
   if (websitesSucceeded === 0 && websites.length > 0 && mergedPosts.length === 0) {
-    const placeholder = buildPlaceholderHtml(websites.length) + buildFailedSitesBlock(failedSites);
+    const placeholder = buildPlaceholderHtml(websites.length);
     log.warn(
       `[web-scraper] runId=${runId} all ${websites.length} sites skipped or failed — sending placeholder`
     );
@@ -539,7 +518,7 @@ export async function runWebPipeline(runId: string): Promise<WebRunSummary> {
         `[web-scraper] runId=${runId} no relevant content — silence in channel (D-14)`
       );
     } else {
-      const finalHtml = composeWebDigest(html, websitesSucceeded, websites.length) + buildFailedSitesBlock(failedSites);
+      const finalHtml = composeWebDigest(html, websitesSucceeded, websites.length);
       await sendToChannel(finalHtml);
       writeOutputWeb(finalHtml, runId);
       digestDelivered = true;
